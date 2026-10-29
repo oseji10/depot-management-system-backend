@@ -29,7 +29,7 @@ class Permissions
             'purchasing.view', 'purchasing.manage',
         ],
         'Sales' => [
-            'sales.view', 'sales.create', 'sales.discount', 'sales.refund',
+            'sales.view', 'sales.create', 'sales.discount', 'sales.refund', 'sales.import',
             'terminals.view', 'terminals.manage',
             'customers.view', 'customers.manage',
         ],

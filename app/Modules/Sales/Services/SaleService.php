@@ -190,6 +190,7 @@ class SaleService
             $sale = Sale::with(['lines', 'payments'])->lockForUpdate()->findOrFail($saleId);
 
             abort_unless($sale->status === 'completed', 422, 'This sale is already void.');
+            abort_if(str_starts_with((string) $sale->client_ref, \App\Support\Imports\OrderImporter::REF), 422, 'This order was imported from your previous system as history. It never moved stock or posted to the books, so it cannot be voided here.');
             abort_if(
                 $sale->trip_id && Trip::withoutGlobalScopes()->whereKey($sale->trip_id)->where('status', 'closed')->exists(),
                 422, 'This sale belongs to a trip that is already checked in. Correct the stock with an adjustment instead.',

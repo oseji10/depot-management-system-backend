@@ -96,10 +96,21 @@ class ProductController extends Controller
         $product = Product::findOrFail($id);
         $data = $request->validate($this->rules($product->store_id, $product));
 
-        // The base unit is the unit stock is counted in; changing it later would corrupt history.
+        // The base unit is what stock is counted in, so it can only change while the product has no history at all.
+        $newBase = isset($data['base_unit_id']) ? (int) $data['base_unit_id'] : null;
         unset($data['base_unit_id']);
 
-        DB::transaction(function () use ($product, $data) {
+        if ($newBase !== null && $newBase !== (int) $product->base_unit_id) {
+            abort_if($this->hasHistory($product->id), 422, 'This product already has stock, sales or purchases counted in its current unit, so the unit cannot change. Untick Active and add a new product instead.');
+            abort_unless(array_key_exists('units', $data), 422, 'Send the pack list along with a new base unit.');
+        }
+
+        DB::transaction(function () use ($product, $data, $newBase) {
+            if ($newBase !== null && $newBase !== (int) $product->base_unit_id) {
+                ProductUnit::where('product_id', $product->id)->update(['is_base' => false]);
+                $product->update(['base_unit_id' => $newBase]);
+            }
+
             $product->update(collect($data)->except(['units', 'barcode'])->all());
 
             // Only touch units when the caller sent the list; an omitted key must never deactivate packs.
@@ -109,6 +120,18 @@ class ProductController extends Controller
         });
 
         return response()->json($product->fresh(self::WITH));
+    }
+
+    /** True once anything has been counted, sold or bought in this product's unit. */
+    private function hasHistory(int $productId): bool
+    {
+        foreach (['stock_movements', 'stock_balances', 'sale_lines', 'purchase_order_lines', 'goods_receipt_lines', 'stock_adjustment_lines', 'trip_lines'] as $table) {
+            if (\Illuminate\Support\Facades\Schema::hasTable($table) && DB::table($table)->where('product_id', $productId)->exists()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

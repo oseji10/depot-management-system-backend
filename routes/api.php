@@ -68,6 +68,8 @@ Route::prefix('v1')->group(function () {
         Route::delete('business/logo', [BusinessController::class, 'removeLogo'])->middleware('can:business.manage');
 
         Route::get('overview', [\App\Modules\Organization\Http\Controllers\OverviewController::class, 'show']);
+        Route::get('notifications', [\App\Modules\Organization\Http\Controllers\NotificationController::class, 'index']);
+        Route::post('notifications/read', [\App\Modules\Organization\Http\Controllers\NotificationController::class, 'read']);
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);
 
         // Platform only
@@ -195,6 +197,15 @@ Route::prefix('v1')->group(function () {
         // Sales
         Route::get('pos/catalogue', [PosController::class, 'catalogue'])->middleware('can:sales.create');
 
+        Route::post('imports/customers', [\App\Modules\Organization\Http\Controllers\ImportController::class, 'customers'])->middleware('can:customers.manage');
+        Route::post('imports/products', [\App\Modules\Organization\Http\Controllers\ImportController::class, 'products'])->middleware('can:products.manage');
+        Route::post('imports/orders', [\App\Modules\Organization\Http\Controllers\ImportController::class, 'orders'])->middleware('can:sales.import');
+        Route::get('customers/insights', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'insights'])->middleware('can:customers.view');
+        Route::post('customer-groups', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'storeGroup'])->middleware('can:customers.manage');
+        Route::put('customer-groups/{id}', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'updateGroup'])->middleware('can:customers.manage');
+        Route::delete('customer-groups/{id}', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'deleteGroup'])->middleware('can:customers.manage');
+        Route::post('customer-groups/{id}/members', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'members'])->middleware('can:customers.manage');
+        Route::put('customers/{id}/groups', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'setCustomerGroups'])->middleware('can:customers.manage');
         Route::get('customers', [CustomerController::class, 'index'])->middleware('can:customers.view');
         Route::post('customers', [CustomerController::class, 'store'])->middleware('can:customers.manage');
         Route::get('customers/{id}', [CustomerController::class, 'show'])->middleware('can:customers.view');
