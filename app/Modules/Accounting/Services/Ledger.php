@@ -168,7 +168,12 @@ class Ledger
     private function accountId(int $storeId, int|string $ref, int $line): int
     {
         $query = Account::withoutGlobalScopes()->where('store_id', $storeId)->where('is_active', true);
-        $id = is_int($ref) ? $query->whereKey($ref)->value('id') : $query->where('role', $ref)->value('id');
+        $id = is_int($ref) ? $query->whereKey($ref)->value('id') : (clone $query)->where('role', $ref)->value('id');
+
+        // A system account that was switched off, renumbered over or never created would block every sale. Put it right once.
+        if (! $id && is_string($ref) && app(ChartDefaults::class)->repair($storeId, $ref)) {
+            $id = Account::withoutGlobalScopes()->where('store_id', $storeId)->where('is_active', true)->where('role', $ref)->value('id');
+        }
 
         if (! $id) {
             throw ValidationException::withMessages(["lines.$line.account" => is_int($ref)

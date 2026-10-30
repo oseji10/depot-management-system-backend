@@ -49,8 +49,27 @@ class PosCatalogue
         })->filter(fn ($p) => $p['units']->isNotEmpty())->values();
 
         // Active products that have stock here but no price, so they can't be sold yet. The till tells the user about them.
-        $unpriced = $products->filter(fn (Product $p) => ($stock[$p->id] ?? 0) > 0 && ! $p->units->contains(fn ($u) => isset($effective[$u->id])))
-            ->map(fn (Product $p) => ['id' => $p->id, 'name' => $p->name])->values();
+        $unpriced = $products->filter(fn (Product $p) => ($stock[$p->id] ?? 0) > 0 && ! $p->units->contains(fn ($u) => isset($effective[$u->id])));
+
+        // Why: a price may exist, but in a list the till does not use (not the default one, or a promo that is not running).
+        $elsewhere = \Illuminate\Support\Facades\DB::table('product_prices')->join('price_lists', 'price_lists.id', '=', 'product_prices.price_list_id')
+            ->join('product_units', 'product_units.id', '=', 'product_prices.product_unit_id')
+            ->whereIn('product_units.product_id', $unpriced->pluck('id'))
+            ->get(['product_units.product_id', 'price_lists.name', 'price_lists.type', 'price_lists.is_default', 'price_lists.is_active', 'price_lists.starts_on', 'price_lists.ends_on'])
+            ->groupBy('product_id');
+        $default = \App\Modules\Catalogue\Models\PriceList::where('is_default', true)->first();
+
+        $unpriced = $unpriced->map(fn (Product $p) => [
+            'id' => $p->id, 'name' => $p->name,
+            'why' => match (true) {
+                ! $default || ! $default->is_active => 'The default price list is switched off.',
+                $twin = $products->first(fn (Product $o) => $o->id !== $p->id && mb_strtolower(trim($o->name)) === mb_strtolower(trim($p->name))) =>
+                    "There are two products with this name (codes {$p->sku} and {$twin->sku}). The price may have been set on the other one; this one, which holds the stock, has none.",
+                $p->units->isEmpty() => 'It has no active unit to sell in.',
+                isset($elsewhere[$p->id]) => 'It is priced in "'.$elsewhere[$p->id]->pluck('name')->unique()->implode('", "').'" but not in "'.$default->name.'", the list the till uses.',
+                default => 'No price is set for it in "'.$default->name.'".',
+            },
+        ])->values();
 
         return [
             'warehouse' => ['id' => $warehouse->id, 'name' => $warehouse->name, 'branch_id' => $warehouse->branch_id],

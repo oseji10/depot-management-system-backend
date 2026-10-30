@@ -285,6 +285,7 @@ Route::prefix('v1')->group(function () {
         Route::post('field/sync', [FieldSyncController::class, 'sync'])->middleware(['can:sales.create', 'throttle:120,1']);
         Route::post('field/ping', [FieldSyncController::class, 'ping'])->middleware(['can:sales.create', 'throttle:120,1']);
         Route::get('sync-issues', [SyncIssueController::class, 'index'])->middleware('can:trips.view');
+        Route::post('sync-issues/retry-all', [SyncIssueController::class, 'retryAll'])->middleware('can:trips.manage');
         Route::post('sync-issues/{id}/retry', [SyncIssueController::class, 'retry'])->middleware('can:trips.manage');
         Route::post('sync-issues/{id}/dismiss', [SyncIssueController::class, 'dismiss'])->middleware('can:trips.manage');
 

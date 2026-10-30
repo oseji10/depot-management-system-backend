@@ -46,4 +46,47 @@ class ChartDefaults
             ]);
         }
     }
+
+    /**
+     * Makes sure every system role has an ACTIVE account, without touching anything that already works: a switched-off
+     * account holding the role is switched back on; an account with the standard code but no role takes the role; else
+     * the account is created (on a free code if the standard one is used for something else).
+     *
+     * @return list<string> the roles that had to be put right
+     */
+    public function repair(int $storeId, ?string $onlyRole = null): array
+    {
+        $fixed = [];
+
+        foreach (self::ACCOUNTS as [$code, $name, $type, $role]) {
+            if ($role === null || ($onlyRole !== null && $role !== $onlyRole)) {
+                continue;
+            }
+
+            $accounts = DB::table('accounts')->where('store_id', $storeId);
+
+            if ((clone $accounts)->where('role', $role)->where('is_active', true)->exists()) {
+                continue;
+            }
+
+            if ($held = (clone $accounts)->where('role', $role)->first()) {
+                DB::table('accounts')->where('id', $held->id)->update(['is_active' => true, 'updated_at' => now()]);
+            } elseif ($byCode = (clone $accounts)->where('code', $code)->whereNull('role')->first()) {
+                DB::table('accounts')->where('id', $byCode->id)->update(['role' => $role, 'is_system' => true, 'is_active' => true, 'updated_at' => now()]);
+            } else {
+                $free = $code;
+                while ((clone $accounts)->where('code', $free)->exists()) {
+                    $free = (string) ((int) $free + 1);
+                }
+                DB::table('accounts')->insert([
+                    'store_id' => $storeId, 'code' => $free, 'name' => $name, 'type' => $type, 'role' => $role,
+                    'is_system' => true, 'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+
+            $fixed[] = $role;
+        }
+
+        return $fixed;
+    }
 }

@@ -34,6 +34,32 @@ class SyncIssueController extends Controller
         return response()->json(['result' => $result, 'issue' => $issue->fresh(['rep:id,name', 'trip:id,number'])]);
     }
 
+    /** Retries up to 100 open issues, oldest first, once the cause (a missing account, no stock...) has been fixed. */
+    public function retryAll(Request $request): JsonResponse
+    {
+        $fixed = 0;
+        $still = 0;
+        $firstError = null;
+
+        foreach (SyncIssue::where('status', 'open')->orderBy('id')->limit(100)->get() as $issue) {
+            try {
+                $result = $this->sync->retry($issue);
+            } catch (\Throwable $e) {
+                report($e);
+                $result = ['status' => 'rejected', 'error' => 'Could not be run again.'];
+            }
+
+            if (($result['status'] ?? '') === 'rejected') {
+                $still++;
+                $firstError ??= $result['error'] ?? null;
+            } else {
+                $fixed++;
+            }
+        }
+
+        return response()->json(['fixed' => $fixed, 'still_stuck' => $still, 'example_error' => $firstError]);
+    }
+
     /** The manager has dealt with it some other way (recorded by hand, customer cancelled...). */
     public function dismiss(Request $request, int $id): JsonResponse
     {
