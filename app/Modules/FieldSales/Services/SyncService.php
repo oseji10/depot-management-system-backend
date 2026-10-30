@@ -74,8 +74,12 @@ class SyncService
         try {
             $result = $this->one($issue->kind, $issue->client_ref, $payload, $rep, $payload['_snapshot_at'] ?? null, [], $reprice);
         } catch (Throwable $e) {
+            // A real fault (not a business rule) is logged, and its message is shown to the manager instead of a bare 500.
             if (! $this->isRule($e)) {
-                throw $e;
+                report($e);
+                $issue->update(['error' => 'Server error: '.class_basename($e).': '.mb_substr($e->getMessage(), 0, 400), 'attempts' => $issue->attempts + 1]);
+
+                return ['status' => 'rejected', 'error' => $issue->error];
             }
 
             $issue->update(['error' => $this->messageOf($e), 'attempts' => $issue->attempts + 1]);
