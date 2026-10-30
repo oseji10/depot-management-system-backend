@@ -71,8 +71,10 @@ class SyncService
         $rep = User::findOrFail($issue->user_id);
         $payload = $issue->payload;
 
+        $customers = [];   // passed by reference below, so it must be a variable, not a literal
+
         try {
-            $result = $this->one($issue->kind, $issue->client_ref, $payload, $rep, $payload['_snapshot_at'] ?? null, [], $reprice);
+            $result = $this->one($issue->kind, $issue->client_ref, $payload, $rep, $payload['_snapshot_at'] ?? null, $customers, $reprice);
         } catch (Throwable $e) {
             // A real fault (not a business rule) is logged, and its message is shown to the manager instead of a bare 500.
             if (! $this->isRule($e)) {
