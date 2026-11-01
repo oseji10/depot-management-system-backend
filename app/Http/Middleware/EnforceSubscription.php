@@ -24,7 +24,7 @@ class EnforceSubscription
 
         $path = trim(preg_replace('#^api/v1/#', '', $request->path()), '/');
 
-        if (str_starts_with($path, 'auth/') || $path === 'subscription' || str_starts_with($path, 'subscription/')
+        if (str_starts_with($path, 'auth/') || $path === 'subscription' || $path === 'notifications/email' || str_starts_with($path, 'subscription/')
             || ($path === 'businesses' && $request->isMethod('GET')) || preg_match('#^businesses/\d+/switch$#', $path)) {
             return $next($request);
         }

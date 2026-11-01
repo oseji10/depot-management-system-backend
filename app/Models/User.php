@@ -33,6 +33,8 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_super_admin' => 'boolean',
             'is_active' => 'boolean',
+            'email_notifications' => 'boolean',
+            'email_kinds' => 'array',
         ];
     }
 

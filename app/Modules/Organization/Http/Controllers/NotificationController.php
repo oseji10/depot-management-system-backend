@@ -3,6 +3,7 @@
 namespace App\Modules\Organization\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Organization\Services\NotificationEmailer;
 use App\Modules\Organization\Services\NotificationService;
 use App\Support\Tenancy\AccessScope;
 use Illuminate\Http\JsonResponse;
@@ -53,5 +54,30 @@ class NotificationController extends Controller
         }
 
         return response()->json(['ok' => true]);
+    }
+
+    /** The signed-in person's own email choices. */
+    public function emailSettings(Request $request): JsonResponse
+    {
+        $u = $request->user();
+
+        return response()->json([
+            'email' => $u->email, 'enabled' => (bool) $u->email_notifications, 'kinds' => $u->email_kinds,
+            'available' => collect(NotificationEmailer::KINDS)->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),
+        ]);
+    }
+
+    public function saveEmailSettings(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'enabled' => ['required', 'boolean'],
+            'kinds' => ['nullable', 'array'],
+            'kinds.*' => ['string', 'in:'.implode(',', array_keys(NotificationEmailer::KINDS))],
+        ]);
+
+        $u = $request->user();
+        $u->forceFill(['email_notifications' => $data['enabled'], 'email_kinds' => $data['kinds'] ?? null])->save();
+
+        return $this->emailSettings($request);
     }
 }

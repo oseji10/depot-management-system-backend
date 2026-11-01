@@ -73,6 +73,8 @@ class UserController extends Controller
             return $user;
         });
 
+        app(\App\Modules\Organization\Services\NotificationEmailer::class)->accountCreated($user, $storeId, $role->name);
+
         return response()->json($user, 201);
     }
 

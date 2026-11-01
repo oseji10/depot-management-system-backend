@@ -56,6 +56,8 @@ Route::prefix('v1')->group(function () {
     Route::prefix('auth')->group(function () {
         Route::post('register-store', [AuthController::class, 'registerStore'])->middleware('throttle:5,1');
         Route::post('login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+        Route::post('forgot-password', [\App\Modules\Organization\Http\Controllers\PasswordResetController::class, 'forgot'])->middleware('throttle:5,1');
+        Route::post('reset-password', [\App\Modules\Organization\Http\Controllers\PasswordResetController::class, 'reset'])->middleware('throttle:10,1');
     });
 
     // Authenticated + tenant resolved
@@ -72,6 +74,8 @@ Route::prefix('v1')->group(function () {
 
         Route::get('overview', [\App\Modules\Organization\Http\Controllers\OverviewController::class, 'show']);
         Route::get('notifications', [\App\Modules\Organization\Http\Controllers\NotificationController::class, 'index']);
+        Route::get('notifications/email', [\App\Modules\Organization\Http\Controllers\NotificationController::class, 'emailSettings']);
+        Route::put('notifications/email', [\App\Modules\Organization\Http\Controllers\NotificationController::class, 'saveEmailSettings']);
         Route::post('notifications/read', [\App\Modules\Organization\Http\Controllers\NotificationController::class, 'read']);
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);
 

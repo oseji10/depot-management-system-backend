@@ -66,6 +66,10 @@ class StoreProvisioner
 
             DB::table('user_stores')->insertOrIgnore(['user_id' => $owner->id, 'store_id' => $store->id, 'branch_id' => null, 'is_owner' => true, 'created_at' => now(), 'updated_at' => now()]);
 
+            if (empty($data['existing_owner'])) {
+                app(NotificationEmailer::class)->welcome($store, $owner); // queued; a mail problem never fails sign-up
+            }
+
             return [$store, $owner];
         });
     }

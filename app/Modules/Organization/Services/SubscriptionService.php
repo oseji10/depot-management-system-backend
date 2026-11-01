@@ -87,7 +87,9 @@ class SubscriptionService
     /** Records a payment that has been received and moves the end date forward. Safe to call twice for the same reference. */
     public function recordPayment(int $storeId, ?int $planId, int $amount, int $months, string $method, ?string $reference, ?int $userId, ?string $note = null): int
     {
-        return DB::transaction(function () use ($storeId, $planId, $amount, $months, $method, $reference, $userId, $note) {
+        $already = $reference && DB::table('subscription_payments')->where('reference', $reference)->where('status', 'success')->exists();
+
+        $id = DB::transaction(function () use ($storeId, $planId, $amount, $months, $method, $reference, $userId, $note) {
             $pending = $reference ? DB::table('subscription_payments')->where('reference', $reference)->lockForUpdate()->first() : null;
 
             if ($pending && $pending->status === 'success') {
@@ -113,6 +115,12 @@ class SubscriptionService
 
             return $id;
         });
+
+        if (! $already) {
+            app(NotificationEmailer::class)->paymentReceived($storeId, $id);
+        }
+
+        return $id;
     }
 
     /** mode: full | readonly | blocked | null (follow the dates). */

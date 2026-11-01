@@ -23,6 +23,9 @@ class NotificationService
     private const DAY = [100_000, 250_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000, 20_000_000, 50_000_000, 100_000_000];
     private const MONTH = [1_000_000, 2_500_000, 5_000_000, 10_000_000, 25_000_000, 50_000_000, 100_000_000, 250_000_000, 500_000_000, 1_000_000_000];
 
+    /** Notifications created during the current refresh; they are emailed together afterwards. */
+    private array $fresh = [];
+
     public function refresh(int $storeId): void
     {
         if (! Cache::add("notifications-refresh:{$storeId}", 1, 120)) {
@@ -30,9 +33,46 @@ class NotificationService
         }
 
         $today = now()->toDateString();
+        $this->fresh = [];
 
         $this->milestones($storeId, $today);
         $this->attention($storeId, $today);
+        $this->billing($storeId);
+
+        if ($this->fresh !== []) {
+            app(NotificationEmailer::class)->digest($storeId, $this->fresh);
+            $this->fresh = [];
+        }
+    }
+
+    /** The subscription is about to end, or has ended and the account is read-only. Only people who manage the business see it. */
+    private function billing(int $storeId): void
+    {
+        $s = app(SubscriptionService::class)->state($storeId);
+
+        if (($s['kind'] ?? 'none') === 'none' || empty($s['ends_at']) || $s['overridden']) {
+            return;
+        }
+
+        $what = $s['kind'] === 'trial' ? 'free trial' : 'subscription';
+        $endsOn = substr($s['ends_at'], 0, 10);
+
+        if ($s['mode'] === 'readonly') {
+            $until = \Illuminate\Support\Carbon::parse($s['readonly_until'])->format('j M Y');
+            $this->add($storeId, ['kind' => 'billing', 'severity' => 'alert', 'permission' => 'business.manage', 'url' => '/subscription', 'dedupe_key' => "billing-readonly:{$endsOn}",
+                'title' => "Your {$what} has ended", 'body' => "The account is read-only until {$until}, then it is blocked. Renew to keep recording sales."]);
+
+            return;
+        }
+
+        $left = $s['days_left'];
+
+        if ($s['mode'] === 'full' && $left !== null && $left >= 0 && $left <= 7) {
+            $bucket = $left <= 1 ? 1 : ($left <= 3 ? 3 : 7);
+            $this->add($storeId, ['kind' => 'billing', 'severity' => 'warning', 'permission' => 'business.manage', 'url' => '/subscription', 'dedupe_key' => "billing-ending:{$endsOn}:{$bucket}",
+                'title' => $left === 0 ? "Your {$what} ends today" : "Your {$what} ends in {$left} day".($left === 1 ? '' : 's'),
+                'body' => 'Renew before it ends so nothing stops for your team.']);
+        }
     }
 
     private function milestones(int $storeId, string $today): void
@@ -107,6 +147,10 @@ class NotificationService
 
     private function add(int $storeId, array $n): void
     {
-        DB::table('app_notifications')->insertOrIgnore([...$n, 'store_id' => $storeId, 'created_at' => now(), 'updated_at' => now()]);
+        $created = DB::table('app_notifications')->insertOrIgnore([...$n, 'store_id' => $storeId, 'created_at' => now(), 'updated_at' => now()]);
+
+        if ($created) {
+            $this->fresh[] = $n;
+        }
     }
 }
