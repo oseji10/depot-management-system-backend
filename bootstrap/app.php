@@ -15,7 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // >>> ADD
-        $middleware->alias(['tenant' => ResolveTenant::class]);
+        $middleware->alias(['tenant' => ResolveTenant::class, 'menus' => \App\Http\Middleware\EnforceDisabledMenus::class, 'subscription' => \App\Http\Middleware\EnforceSubscription::class, 'warehouse' => \App\Http\Middleware\DefaultToChosenWarehouse::class]);
         // <<< ADD
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -29,7 +29,7 @@ class FieldSyncController extends Controller
         abort_unless($van, 403, 'This account has no van.');
 
         $trip = $this->trips->openTripFor($user);
-        $customers = Customer::where('is_active', true)->orderBy('name')->limit(3000)->get(['id', 'name', 'phone', 'type', 'credit_limit']);
+        $customers = Customer::where('is_active', true)->orderBy('name')->limit(3000)->get(['id', 'name', 'phone', 'type', 'credit_limit', 'empties_mode']);
         $owing = Customer::outstanding($customers->pluck('id')->all());
 
         return response()->json([
@@ -39,7 +39,7 @@ class FieldSyncController extends Controller
             'van' => ['id' => $van->id, 'name' => $van->name],
             'trip' => $trip ? ['id' => $trip->id, 'number' => $trip->number, 'opened_at' => $trip->opened_at] : null,
             'catalogue' => $this->catalogue->build($van),
-            'customers' => $customers->map(fn ($c) => [...$c->only(['id', 'name', 'phone', 'type', 'credit_limit']), 'owing' => (int) ($owing[$c->id] ?? 0)])->values(),
+            'customers' => $customers->map(fn ($c) => [...$c->only(['id', 'name', 'phone', 'type', 'credit_limit', 'empties_mode']), 'owing' => (int) ($owing[$c->id] ?? 0)])->values(),
             'expense_categories' => ExpenseCategory::where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'can_discount' => $user->can('sales.discount'),
         ]);

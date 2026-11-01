@@ -19,7 +19,7 @@ class Sale extends Model
 
     protected $fillable = [
         'store_id', 'branch_id', 'warehouse_id', 'trip_id', 'customer_id', 'number', 'client_ref', 'channel', 'status', 'payment_status',
-        'offline', 'synced_at', 'sold_at', 'subtotal', 'discount_total', 'total', 'deposit_total', 'amount_paid', 'balance_due', 'cogs_total', 'note',
+        'offline', 'synced_at', 'sold_at', 'subtotal', 'discount_total', 'total', 'deposit_total', 'amount_paid', 'balance_due', 'returned_total', 'cogs_total', 'note',
         'created_by', 'voided_by', 'voided_at', 'void_reason',
     ];
 
@@ -35,6 +35,11 @@ class Sale extends Model
     public function lines(): HasMany
     {
         return $this->hasMany(SaleLine::class);
+    }
+
+    public function returns(): HasMany
+    {
+        return $this->hasMany(SaleReturn::class);
     }
 
     public function payments(): HasMany

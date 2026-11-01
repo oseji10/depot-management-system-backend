@@ -63,7 +63,7 @@ class NotificationService
         $low = ReorderLevel::query()->addSelect(['saleable' => $saleable])->get()->filter(fn ($r) => (int) $r->saleable < $r->min_quantity)->count();
 
         if ($low > 0) {
-            $this->add($storeId, ['kind' => 'stock', 'severity' => 'warning', 'permission' => 'inventory.view', 'url' => '/stock', 'dedupe_key' => "lowstock:{$today}",
+            $this->add($storeId, ['kind' => 'stock', 'severity' => 'warning', 'permission' => 'inventory.view', 'url' => '/stock/reorder', 'dedupe_key' => "lowstock:{$today}",
                 'title' => "{$low} product".($low === 1 ? ' is' : 's are').' running low', 'body' => 'Stock is below the reorder level. Time to place an order.']);
         }
 

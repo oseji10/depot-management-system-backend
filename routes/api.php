@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Accounting\Http\Controllers\AccountController;
+use App\Modules\Accounting\Http\Controllers\BankReconciliationController;
 use App\Modules\Accounting\Http\Controllers\FiscalPeriodController;
 use App\Modules\Accounting\Http\Controllers\JournalController;
 use App\Modules\Accounting\Http\Controllers\ReportController;
@@ -58,7 +59,9 @@ Route::prefix('v1')->group(function () {
     });
 
     // Authenticated + tenant resolved
-    Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
+    Route::post('paystack/webhook', [\App\Modules\Organization\Http\Controllers\SubscriptionController::class, 'webhook']);
+
+    Route::middleware(['auth:sanctum', 'tenant', 'subscription', 'menus', 'warehouse'])->group(function () {
         Route::post('auth/logout', [AuthController::class, 'logout']);
         Route::get('auth/me', [AuthController::class, 'me']);
 
@@ -72,12 +75,31 @@ Route::prefix('v1')->group(function () {
         Route::post('notifications/read', [\App\Modules\Organization\Http\Controllers\NotificationController::class, 'read']);
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);
 
+        Route::get('businesses', [\App\Modules\Organization\Http\Controllers\BusinessSwitchController::class, 'index']);
+        Route::post('businesses', [\App\Modules\Organization\Http\Controllers\BusinessSwitchController::class, 'store'])->middleware('can:business.manage');
+        Route::post('businesses/{id}/switch', [\App\Modules\Organization\Http\Controllers\BusinessSwitchController::class, 'switch']);
+        Route::get('workspace/options', [\App\Modules\Organization\Http\Controllers\BusinessSwitchController::class, 'scopes']);
+
+        Route::get('subscription', [\App\Modules\Organization\Http\Controllers\SubscriptionController::class, 'show'])->middleware('can:business.manage');
+        Route::post('subscription/checkout', [\App\Modules\Organization\Http\Controllers\SubscriptionController::class, 'checkout'])->middleware('can:business.manage');
+        Route::post('subscription/verify', [\App\Modules\Organization\Http\Controllers\SubscriptionController::class, 'verify'])->middleware('can:business.manage');
+
         // Platform only
         Route::middleware('can:platform')->group(function () {
             Route::get('stores', [StoreController::class, 'index']);
             Route::post('stores', [StoreController::class, 'store']);
             Route::get('stores/{store}', [StoreController::class, 'show']);
             Route::put('stores/{store}', [StoreController::class, 'update']);
+
+            Route::get('platform/subscriptions', [\App\Modules\Organization\Http\Controllers\PlatformSubscriptionController::class, 'index']);
+            Route::put('platform/subscription-settings', [\App\Modules\Organization\Http\Controllers\PlatformSubscriptionController::class, 'settings']);
+            Route::post('platform/plans', [\App\Modules\Organization\Http\Controllers\PlatformSubscriptionController::class, 'savePlan']);
+            Route::put('platform/plans/{id}', [\App\Modules\Organization\Http\Controllers\PlatformSubscriptionController::class, 'savePlan']);
+            Route::get('platform/subscriptions/{storeId}/payments', [\App\Modules\Organization\Http\Controllers\PlatformSubscriptionController::class, 'payments']);
+            Route::post('platform/subscriptions/{storeId}/trial', [\App\Modules\Organization\Http\Controllers\PlatformSubscriptionController::class, 'trial']);
+            Route::post('platform/subscriptions/{storeId}/extend', [\App\Modules\Organization\Http\Controllers\PlatformSubscriptionController::class, 'extend']);
+            Route::post('platform/subscriptions/{storeId}/payment', [\App\Modules\Organization\Http\Controllers\PlatformSubscriptionController::class, 'payment']);
+            Route::put('platform/subscriptions/{storeId}/override', [\App\Modules\Organization\Http\Controllers\PlatformSubscriptionController::class, 'override']);
         });
 
         Route::get('branches', [BranchController::class, 'index'])->middleware('can:branches.view');
@@ -146,6 +168,7 @@ Route::prefix('v1')->group(function () {
 
         // Stock
         Route::get('stock/on-hand', [StockController::class, 'onHand'])->middleware('can:inventory.view');
+        Route::get('stock/reorder-suggestions', [StockController::class, 'reorderSuggestions'])->middleware('can:inventory.view');
         Route::get('stock/low-stock', [StockController::class, 'lowStock'])->middleware('can:inventory.view');
         Route::get('stock/expiry', [ExpiryController::class, 'index'])->middleware('can:inventory.view');
         Route::post('stock/expiry/assign', [ExpiryController::class, 'assign'])->middleware('can:inventory.adjust');
@@ -197,9 +220,13 @@ Route::prefix('v1')->group(function () {
         // Sales
         Route::get('pos/catalogue', [PosController::class, 'catalogue'])->middleware('can:sales.create');
 
+        Route::get('import-batches', [\App\Modules\Organization\Http\Controllers\ImportBatchController::class, 'index'])->middleware('can:audit.view');
+        Route::post('import-batches/{id}/undo', [\App\Modules\Organization\Http\Controllers\ImportBatchController::class, 'undo'])->middleware('can:sales.import');
         Route::post('imports/customers', [\App\Modules\Organization\Http\Controllers\ImportController::class, 'customers'])->middleware('can:customers.manage');
         Route::post('imports/products', [\App\Modules\Organization\Http\Controllers\ImportController::class, 'products'])->middleware('can:products.manage');
         Route::post('imports/orders', [\App\Modules\Organization\Http\Controllers\ImportController::class, 'orders'])->middleware('can:sales.import');
+        Route::get('customers/aging', [\App\Modules\Sales\Http\Controllers\CustomerFinanceController::class, 'aging'])->middleware('can:customers.view');
+        Route::get('customers/{id}/statement', [\App\Modules\Sales\Http\Controllers\CustomerFinanceController::class, 'statement'])->middleware('can:customers.view');
         Route::get('customers/insights', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'insights'])->middleware('can:customers.view');
         Route::post('customer-groups', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'storeGroup'])->middleware('can:customers.manage');
         Route::put('customer-groups/{id}', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'updateGroup'])->middleware('can:customers.manage');
@@ -216,6 +243,10 @@ Route::prefix('v1')->group(function () {
         Route::post('sales', [SaleController::class, 'store'])->middleware('can:sales.create');
         Route::get('sales/{id}', [SaleController::class, 'show'])->middleware('can:sales.view');
         Route::post('sales/{id}/payments', [SaleController::class, 'pay'])->middleware('can:sales.create');
+        Route::get('returns', [\App\Modules\Sales\Http\Controllers\SaleReturnController::class, 'index'])->middleware('can:sales.view');
+        Route::get('returns/{id}', [\App\Modules\Sales\Http\Controllers\SaleReturnController::class, 'show'])->middleware('can:sales.view');
+        Route::get('sales/{id}/returnable', [\App\Modules\Sales\Http\Controllers\SaleReturnController::class, 'returnable'])->middleware('can:sales.refund');
+        Route::post('sales/{id}/returns', [\App\Modules\Sales\Http\Controllers\SaleReturnController::class, 'store'])->middleware('can:sales.refund');
         Route::post('sales/{id}/void', [SaleController::class, 'void'])->middleware('can:sales.refund');
 
         // Field sales: salesperson accounts, issuing stock to their van, and checking it back in
@@ -327,6 +358,16 @@ Route::prefix('v1')->group(function () {
         Route::post('fiscal-periods/{id}/close', [FiscalPeriodController::class, 'close'])->middleware('can:periods.close');
         Route::post('fiscal-periods/{id}/reopen', [FiscalPeriodController::class, 'reopen'])->middleware('can:periods.close');
 
+        Route::get('bank-statements/accounts', [BankReconciliationController::class, 'accounts'])->middleware('can:accounts.view');
+        Route::get('bank-statements', [BankReconciliationController::class, 'index'])->middleware('can:accounts.view');
+        Route::post('bank-statements', [BankReconciliationController::class, 'store'])->middleware('can:accounts.manage');
+        Route::get('bank-statements/{id}', [BankReconciliationController::class, 'show'])->middleware('can:accounts.view');
+        Route::delete('bank-statements/{id}', [BankReconciliationController::class, 'destroy'])->middleware('can:accounts.manage');
+        Route::post('bank-statements/{id}/auto-match', [BankReconciliationController::class, 'auto'])->middleware('can:accounts.manage');
+        Route::post('bank-statements/{id}/lines/{lineId}/match', [BankReconciliationController::class, 'match'])->middleware('can:accounts.manage');
+        Route::post('bank-statements/{id}/lines/{lineId}/unmatch', [BankReconciliationController::class, 'unmatch'])->middleware('can:accounts.manage');
+        Route::post('bank-statements/{id}/lines/{lineId}/ignore', [BankReconciliationController::class, 'ignore'])->middleware('can:accounts.manage');
+        Route::post('bank-statements/{id}/lines/{lineId}/book', [BankReconciliationController::class, 'book'])->middleware('can:journals.create');
         Route::get('journals', [JournalController::class, 'index'])->middleware('can:accounts.view');
         Route::post('journals', [JournalController::class, 'store'])->middleware('can:journals.create');
         Route::get('journals/{id}', [JournalController::class, 'show'])->middleware('can:accounts.view');

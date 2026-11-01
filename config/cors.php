@@ -11,7 +11,7 @@ return [
     'allowed_methods' => ['*'],
     'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:3000'))))),
     'allowed_origins_patterns' => [],
-    'allowed_headers' => ['Authorization', 'Content-Type', 'Accept', 'X-Requested-With', 'X-Store-Id', 'X-Branch-Id'],
+    'allowed_headers' => ['Authorization', 'Content-Type', 'Accept', 'X-Requested-With', 'X-Store-Id', 'X-Branch-Id', 'X-Warehouse-Id'],
     'exposed_headers' => [],
     'max_age' => 86400,
     'supports_credentials' => false,

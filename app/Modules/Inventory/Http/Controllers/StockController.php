@@ -66,6 +66,48 @@ class StockController extends Controller
         return response()->json($paginator);
     }
 
+    /**
+     * What to buy. For every product with a reorder level: stock now, how fast it has been selling from that warehouse over the
+     * last 30 days, how many days it will last, and how much to order to get back above the level with `cover` days of selling on top.
+     * Listed when stock is under the level or will run out within `within` days.
+     */
+    public function reorderSuggestions(Request $request): JsonResponse
+    {
+        $data = $request->validate(['cover' => ['nullable', 'integer', 'min:1', 'max:120'], 'within' => ['nullable', 'integer', 'min:1', 'max:60']]);
+        $cover = (int) ($data['cover'] ?? 14);
+        $within = (int) ($data['within'] ?? 7);
+        $storeId = $this->access->requireStoreId();
+        $since = now()->subDays(30)->startOfDay();
+
+        $levels = ReorderLevel::query()->with(['product:id,name,sku,is_active', 'warehouse:id,name'])->get()->filter(fn ($l) => $l->product?->is_active);
+        $stock = StockBalance::query()->where('status', 'saleable')->groupBy('warehouse_id', 'product_id')->selectRaw('warehouse_id, product_id, SUM(quantity) AS qty')->get()
+            ->keyBy(fn ($r) => "{$r->warehouse_id}:{$r->product_id}");
+
+        $sold = DB::table('sale_lines as l')->join('sales as s', 's.id', '=', 'l.sale_id')
+            ->where('s.store_id', $storeId)->where('s.status', 'completed')->where('s.sold_at', '>=', $since)->where('s.client_ref', 'not like', 'import:%')
+            ->groupBy('s.warehouse_id', 'l.product_id')->selectRaw('s.warehouse_id, l.product_id, SUM(l.quantity * l.factor) AS qty')->get()
+            ->keyBy(fn ($r) => "{$r->warehouse_id}:{$r->product_id}");
+
+        $packs = $this->largestPacks($levels->pluck('product_id')->unique()->all());
+
+        $rows = $levels->map(function ($l) use ($stock, $sold, $packs, $cover) {
+            $key = "{$l->warehouse_id}:{$l->product_id}";
+            $onHand = (int) ($stock[$key]->qty ?? 0);
+            $daily = round(((float) ($sold[$key]->qty ?? 0)) / 30, 2);
+            $need = max((int) ceil($l->min_quantity + $daily * $cover - $onHand), 0);
+            $pack = $packs[$l->product_id] ?? null;
+
+            return [
+                'product' => $l->product, 'warehouse' => $l->warehouse, 'saleable' => $onHand, 'min_quantity' => $l->min_quantity,
+                'daily' => $daily, 'days_left' => $daily > 0 ? round($onHand / $daily, 1) : null, 'below_level' => $onHand < $l->min_quantity,
+                'suggested' => $need, 'pack' => $pack, 'suggested_packs' => $pack ? (int) ceil($need / max($pack['factor'], 1)) : null,
+            ];
+        })->filter(fn ($r) => $r['below_level'] || ($r['days_left'] !== null && $r['days_left'] <= $within))
+            ->sortBy(fn ($r) => $r['days_left'] ?? 9999)->values();
+
+        return response()->json(['cover' => $cover, 'within' => $within, 'data' => $rows]);
+    }
+
     /** Reorder levels that saleable stock has fallen below, including products with no stock at all. */
     public function lowStock(): JsonResponse
     {

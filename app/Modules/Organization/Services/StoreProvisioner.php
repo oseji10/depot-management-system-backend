@@ -49,7 +49,10 @@ class StoreProvisioner
             app(ChartDefaults::class)->seed($store->id);
             app(ExpenseDefaults::class)->seed($store->id);
 
-            $owner = User::create([
+            app(SubscriptionService::class)->startTrial($store->id); // every new business starts on a free trial
+
+            // A person who already owns a business can start another: they keep their login and become its owner too.
+            $owner = $data['existing_owner'] ?? User::create([
                 'store_id' => $store->id,
                 'branch_id' => null, // store level: sees every branch
                 'name' => $data['owner_name'],
@@ -58,7 +61,10 @@ class StoreProvisioner
             ]);
 
             app(PermissionRegistrar::class)->setPermissionsTeamId($store->id);
+            $owner->unsetRelation('roles')->unsetRelation('permissions');
             $owner->assignRole('Owner');
+
+            DB::table('user_stores')->insertOrIgnore(['user_id' => $owner->id, 'store_id' => $store->id, 'branch_id' => null, 'is_owner' => true, 'created_at' => now(), 'updated_at' => now()]);
 
             return [$store, $owner];
         });

@@ -10,7 +10,8 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        // One instance per request: it remembers branch checks and can be switched to "unscoped" while a new business is set up.
+        $this->app->scoped(\App\Support\Tenancy\AccessScope::class);
     }
 
     public function boot(): void

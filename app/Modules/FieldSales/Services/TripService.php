@@ -352,6 +352,8 @@ class TripService
             $this->posting->tripLoss($trip->store_id, $trip->branch_id, "Trip {$trip->number}: stock not returned", "trip:{$trip->id}:shortage", $trip, $short, $actor);
         }
 
+        $this->chargeShortages($trip, $short, $actor);
+
         $this->imprest->settle($trip, $imprestReturned, $actor);
 
         $expected = $this->cashExpected($trip->setAttribute('closed_at', now()));
@@ -360,6 +362,41 @@ class TripService
             'status' => 'closed', 'closed_at' => now(), 'closed_by' => $actor->id, 'close_note' => $note,
             'cash_expected' => $expected, 'cash_handed_in' => $cashHandedIn, 'cash_variance' => $cashHandedIn - $expected,
         ]);
+    }
+
+    /**
+     * Stock a salesperson did not bring back is charged to them: one PENDING staff charge per product, at today's selling
+     * price, for the manager to approve (or reject) and for payroll to recover. Nothing is charged when the salesperson has
+     * no staff record linked to their login; the loss then simply stays with the business.
+     *
+     * @param  array<int, int>  $short  product_id => base units
+     */
+    private function chargeShortages(Trip $trip, array $short, User $actor): void
+    {
+        $employee = $short ? \App\Modules\Hr\Models\Employee::withoutGlobalScopes()->where('store_id', $trip->store_id)->where('user_id', $trip->rep_id)->where('status', 'active')->first() : null;
+
+        if (! $employee) {
+            return;
+        }
+
+        $effective = app(\App\Modules\Catalogue\Services\PriceResolver::class)->effective()->keyBy('product_unit_id');
+        $charges = app(\App\Modules\Hr\Services\StaffChargeService::class);
+
+        foreach ($short as $productId => $qty) {
+            $product = \App\Modules\Catalogue\Models\Product::withoutGlobalScopes()->find($productId);
+            $base = ProductUnit::where('product_id', $productId)->where('is_base', true)->first();
+            $price = $base && isset($effective[$base->id]) ? \App\Support\Money::kobo($effective[$base->id]['price']) : 0;
+
+            if ($price < 1) {
+                continue;   // no selling price to charge at; the manager can raise a charge by hand
+            }
+
+            $charges->create($employee, [
+                'reason' => 'shortage', 'product_id' => $productId, 'quantity' => $qty, 'unit_amount' => $price,
+                'description' => "Trip {$trip->number}: {$qty} x ".($product?->name ?? 'product').' not returned at check-in',
+                'incident_on' => now()->toDateString(),
+            ], $actor);
+        }
     }
 
     /**
