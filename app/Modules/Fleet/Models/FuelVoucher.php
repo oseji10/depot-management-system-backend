@@ -18,7 +18,7 @@ class FuelVoucher extends Model
 
     protected function casts(): array
     {
-        return ['amount' => 'integer', 'amount_used' => 'integer', 'litres' => 'float', 'redeemed_at' => 'datetime', 'cancelled_at' => 'datetime'];
+        return ['amount' => 'integer', 'amount_used' => 'integer', 'litres' => 'float', 'price_per_litre' => 'integer', 'redeemed_at' => 'datetime', 'cancelled_at' => 'datetime'];
     }
 
     public function station(): BelongsTo
@@ -39,5 +39,10 @@ class FuelVoucher extends Model
     public function issuer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'issued_by');
+    }
+
+    public function voider(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'voided_by');
     }
 }

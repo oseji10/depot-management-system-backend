@@ -186,7 +186,7 @@ class OverviewController extends Controller
             'docs_expired' => VehicleDocument::whereIn('vehicle_id', $ids)->whereNotNull('expires_on')->where('expires_on', '<', $today)->count(),
             'docs_soon' => VehicleDocument::whereIn('vehicle_id', $ids)->whereBetween('expires_on', [$today, $soon])->count(),
             'imprest_issued' => (int) Imprest::where('status', 'issued')->sum('amount'),
-            'fuel_vouchers_out' => $fuel ? (int) FuelVoucher::where('status', 'issued')->sum('amount') : null,
+            'fuel_vouchers_out' => $fuel ? (int) FuelVoucher::where('status', '!=', 'cancelled')->whereDate('created_at', '>=', now()->startOfMonth())->sum('amount') : null,
         ];
     }
 }

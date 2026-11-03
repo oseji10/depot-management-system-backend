@@ -32,9 +32,10 @@ class BusinessController extends Controller
             'name' => ['required', 'string', 'max:150'],
             'address' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30'],
+            'email' => ['nullable', 'email', 'max:150'],
         ]));
 
-        return response()->json($store->only(['id', 'name', 'address', 'phone']));
+        return response()->json($store->only(['id', 'name', 'address', 'phone', 'email']));
     }
 
     /** The browser shrinks the logo and sends it as a data URL (PNG, JPEG or WebP); it is checked as a real image. */

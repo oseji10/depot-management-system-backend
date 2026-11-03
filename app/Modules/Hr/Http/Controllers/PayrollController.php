@@ -30,7 +30,7 @@ class PayrollController extends Controller
         $this->storeLevel();
 
         $run = PayrollRun::findOrFail($id);
-        $slips = $run->payslips()->with(['employee:id,name,staff_no,job_title,bank_name,account_number,account_name', 'lines'])->get()->sortBy(fn ($s) => $s->employee->name)->values();
+        $slips = $run->payslips()->with(['employee:id,name,staff_no,job_title,phone,bank_name,account_number,account_name', 'lines'])->get()->sortBy(fn ($s) => $s->employee->name)->values();
 
         return response()->json([...$run->toArray(), 'payslips' => $slips]);
     }

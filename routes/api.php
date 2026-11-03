@@ -1,6 +1,8 @@
 <?php
 
 use App\Modules\Accounting\Http\Controllers\AccountController;
+use App\Modules\Accounting\Http\Controllers\BankAccountController;
+use App\Modules\FieldSales\Http\Controllers\TargetController;
 use App\Modules\Accounting\Http\Controllers\BankReconciliationController;
 use App\Modules\Accounting\Http\Controllers\FiscalPeriodController;
 use App\Modules\Accounting\Http\Controllers\JournalController;
@@ -232,6 +234,7 @@ Route::prefix('v1')->group(function () {
         Route::get('customers/aging', [\App\Modules\Sales\Http\Controllers\CustomerFinanceController::class, 'aging'])->middleware('can:customers.view');
         Route::get('customers/{id}/statement', [\App\Modules\Sales\Http\Controllers\CustomerFinanceController::class, 'statement'])->middleware('can:customers.view');
         Route::get('customers/insights', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'insights'])->middleware('can:customers.view');
+        Route::get('customer-groups', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'groups'])->middleware('can:customers.view');
         Route::post('customer-groups', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'storeGroup'])->middleware('can:customers.manage');
         Route::put('customer-groups/{id}', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'updateGroup'])->middleware('can:customers.manage');
         Route::delete('customer-groups/{id}', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'deleteGroup'])->middleware('can:customers.manage');
@@ -304,19 +307,27 @@ Route::prefix('v1')->group(function () {
         Route::get('fuel-stations/{id}/entries', [FuelController::class, 'entries'])->middleware('can:fuel.view');
         Route::get('fuel-vouchers', [FuelController::class, 'vouchers'])->middleware('can:fuel.view');
         Route::post('fuel-vouchers', [FuelController::class, 'issue'])->middleware('can:fuel.manage');
-        Route::post('fuel-vouchers/{id}/redeem', [FuelController::class, 'redeem'])->middleware('can:fuel.manage');
-        Route::post('fuel-vouchers/{id}/cancel', [FuelController::class, 'cancel'])->middleware('can:fuel.manage');
+        Route::get('fuel-vouchers/{id}', [FuelController::class, 'showVoucher'])->middleware('can:fuel.view');
+        Route::post('fuel-vouchers/{id}/void', [FuelController::class, 'void'])->middleware('can:fuel.manage');
 
         Route::get('reps', [RepController::class, 'index'])->middleware('can:trips.view');
         Route::post('reps', [RepController::class, 'store'])->middleware(['can:trips.manage', 'can:users.create']);
         Route::put('reps/{id}', [RepController::class, 'update'])->middleware('can:trips.manage');
         Route::get('trips', [TripController::class, 'index'])->middleware('can:trips.view');
+        Route::get('trips/terminals', [TripController::class, 'terminals'])->middleware('can:trips.manage');
         Route::post('trips/issue', [TripController::class, 'issue'])->middleware('can:trips.manage');
         Route::get('trips/{id}', [TripController::class, 'show'])->middleware('can:trips.view');
         Route::post('trips/{id}/check-in', [TripController::class, 'checkIn'])->middleware('can:trips.manage');
 
         // Offline: a salesperson's phone downloads the day's data, then sends back what it queued
         Route::get('field/bootstrap', [FieldSyncController::class, 'bootstrap'])->middleware('can:sales.create');
+        Route::get('targets', [TargetController::class, 'index'])->middleware('can:targets.view');
+        Route::post('targets', [TargetController::class, 'store'])->middleware('can:targets.manage');
+        Route::delete('targets/{id}', [TargetController::class, 'destroy'])->middleware('can:targets.manage');
+        Route::post('targets/copy', [TargetController::class, 'copy'])->middleware('can:targets.manage');
+        Route::put('target-rules', [TargetController::class, 'saveRules'])->middleware('can:targets.manage');
+        Route::get('targets/mine', [TargetController::class, 'mine'])->middleware('can:sales.create');
+        Route::get('field/customers', [FieldSyncController::class, 'customers'])->middleware('can:sales.create');
         Route::post('field/sync', [FieldSyncController::class, 'sync'])->middleware(['can:sales.create', 'throttle:120,1']);
         Route::post('field/ping', [FieldSyncController::class, 'ping'])->middleware(['can:sales.create', 'throttle:120,1']);
         Route::get('sync-issues', [SyncIssueController::class, 'index'])->middleware('can:trips.view');
@@ -354,6 +365,9 @@ Route::prefix('v1')->group(function () {
         Route::post('expenses/{id}/void', [ExpenseController::class, 'void'])->middleware('can:expenses.manage');
 
         // Accounting (store-level users only; enforced in the controllers)
+        Route::get('bank-accounts', [BankAccountController::class, 'index'])->middleware('can:accounts.view');
+        Route::post('bank-accounts', [BankAccountController::class, 'store'])->middleware('can:accounts.manage');
+        Route::put('bank-accounts/{id}', [BankAccountController::class, 'update'])->middleware('can:accounts.manage');
         Route::get('accounts', [AccountController::class, 'index'])->middleware('can:accounts.view');
         Route::post('accounts', [AccountController::class, 'store'])->middleware('can:accounts.manage');
         Route::put('accounts/{id}', [AccountController::class, 'update'])->middleware('can:accounts.manage');

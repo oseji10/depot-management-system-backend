@@ -78,6 +78,7 @@ class SaleController extends Controller
             'payments.*.method' => ['required', Rule::in(SalePayment::METHODS)],
             'payments.*.amount' => ['required', 'integer', 'min:1', 'max:100000000000'],
             'payments.*.reference' => ['nullable', 'string', 'max:80'], 'payments.*.pos_terminal_id' => ['nullable', 'integer'],
+            'payments.*.transfer_to' => ['nullable', Rule::in(['pos', 'account'])], 'payments.*.account_id' => ['nullable', 'integer'],
         ]);
 
         $sale = $this->service->create($data, $request->user());
@@ -92,6 +93,7 @@ class SaleController extends Controller
             'amount' => ['required', 'integer', 'min:1', 'max:100000000000'],
             'reference' => ['nullable', 'string', 'max:80'],
             'pos_terminal_id' => ['nullable', 'integer'],
+            'transfer_to' => ['nullable', Rule::in(['pos', 'account'])], 'account_id' => ['nullable', 'integer'],
         ]);
 
         $this->visible()->findOrFail($id);
@@ -114,7 +116,7 @@ class SaleController extends Controller
     {
         return $this->visible()->with([
             ...self::WITH, 'lines.product:id,name,sku,size_label', 'lines.unit:id,name',
-            'payments.receiver:id,name', 'payments.terminal:id,name', 'returns:id,sale_id,number,returned_at,total,applied_to_balance,refunded,refund_method',
+            'payments.receiver:id,name', 'payments.terminal:id,name', 'payments.account:id,code,name', 'returns:id,sale_id,number,returned_at,total,applied_to_balance,refunded,refund_method',
         ])->findOrFail($id);
     }
 

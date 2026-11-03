@@ -7,6 +7,7 @@ use App\Modules\Accounting\Models\JournalEntry;
 use App\Modules\Sales\Models\PosTerminal;
 use App\Modules\Sales\Models\Sale;
 use App\Modules\Sales\Models\SalePayment;
+use App\Modules\Sales\Models\SaleReturn;
 
 /**
  * Sales to the books. The sale is always booked to Trade Receivables first, and every payment then clears it, so a
@@ -50,11 +51,40 @@ class SalesPosting
         ]);
     }
 
+    /**
+     * Goods back from a customer (credit note).
+     *   return   Dr Sales / Cr Trade Receivables        Dr Inventory / Cr Cost of Goods Sold
+     *   refund   Dr Trade Receivables / Cr Cash on Hand (cash) or Bank (transfer)    -- only when money is handed back
+     * Net effect on what the customer owes: down by the part taken off their balance.
+     */
+    public function saleReturn(SaleReturn $r, User $actor): void
+    {
+        $base = ['date' => $r->returned_at->toDateString(), 'branch_id' => $r->branch_id, 'source' => $r, 'user_id' => $actor->id];
+
+        $this->ledger->post($r->store_id, [...$base, 'memo' => "Credit note {$r->number}", 'posting_key' => "salereturn:{$r->id}", 'lines' => [
+            ['account' => 'sales', 'debit' => $r->total],
+            ['account' => 'receivables', 'credit' => $r->total],
+            ['account' => 'inventory', 'debit' => $r->cogs_back],
+            ['account' => 'cogs', 'credit' => $r->cogs_back],
+        ]]);
+
+        if ($r->refunded > 0) {
+            $this->ledger->post($r->store_id, [...$base, 'memo' => "Refund on {$r->number} ({$r->refund_method})", 'posting_key' => "salereturn-refund:{$r->id}", 'lines' => [
+                ['account' => 'receivables', 'debit' => $r->refunded],
+                ['account' => $r->refund_method === 'cash' ? 'cash' : 'bank', 'credit' => $r->refunded],
+            ]]);
+        }
+    }
+
     /** Cash goes to Cash on Hand; card and transfer to the Bank, unless the card machine has its own account. */
     private function receivingAccount(SalePayment $payment): int|string
     {
         if ($payment->method === 'cash') {
             return 'cash';
+        }
+
+        if ($payment->account_id) {
+            return (int) $payment->account_id; // the transfer was paid into this account
         }
 
         if ($payment->pos_terminal_id && ($id = PosTerminal::withoutGlobalScopes()->whereKey($payment->pos_terminal_id)->value('account_id'))) {

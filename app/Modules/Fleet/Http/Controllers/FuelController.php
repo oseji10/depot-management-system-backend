@@ -47,12 +47,13 @@ class FuelController extends Controller
     {
         $data = $request->validate([
             'amount' => ['required', 'integer', 'min:1', 'max:100000000000'],
+            'litres' => ['required', 'numeric', 'min:0.01', 'max:10000000'],
             'method' => ['required', Rule::in(['cash', 'bank'])],
             'reference' => ['nullable', 'string', 'max:120'],
             'entry_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
         ]);
 
-        $this->service->topUp(FuelStation::findOrFail($id), $data['amount'], $data['method'], $data['reference'] ?? null, $data['entry_date'] ?? null, $request->user());
+        $this->service->topUp(FuelStation::findOrFail($id), $data['amount'], (float) $data['litres'], $data['method'], $data['reference'] ?? null, $data['entry_date'] ?? null, $request->user());
 
         return response()->json($this->station(FuelStation::findOrFail($id)), 201);
     }
@@ -68,7 +69,7 @@ class FuelController extends Controller
 
     public function vouchers(Request $request): JsonResponse
     {
-        $rows = FuelVoucher::query()->with(['station:id,name', 'driver:id,name', 'trip:id,number'])
+        $rows = FuelVoucher::query()->with(['station:id,name,location', 'driver:id,name', 'trip:id,number', 'issuer:id,name', 'voider:id,name'])
             ->when($request->query('status'), fn ($q, $v) => $q->where('status', $v))
             ->when($request->query('fuel_station_id'), fn ($q, $v) => $q->where('fuel_station_id', $v))
             ->when($request->query('driver_id'), fn ($q, $v) => $q->where('driver_id', $v))
@@ -84,7 +85,8 @@ class FuelController extends Controller
         $data = $request->validate([
             'fuel_station_id' => ['required', 'integer', Rule::exists('fuel_stations', 'id')->where('store_id', $storeId)],
             'driver_id' => ['required', 'integer'],
-            'amount' => ['required', 'integer', 'min:1', 'max:100000000000'],
+            'litres' => ['required', 'numeric', 'min:1', 'max:100000'],
+            'price_per_litre' => ['nullable', 'integer', 'min:1', 'max:10000000'],
             'vehicle' => ['nullable', 'string', 'max:40'],
             'vehicle_id' => ['nullable', 'integer', Rule::exists('vehicles', 'id')->where('store_id', $storeId)],
             'note' => ['nullable', 'string', 'max:255'],
@@ -92,33 +94,33 @@ class FuelController extends Controller
 
         $voucher = $this->service->issue(
             FuelStation::findOrFail($data['fuel_station_id']), User::query()->visibleToActor()->findOrFail($data['driver_id']),
-            $data['amount'], $data['vehicle'] ?? null, $data['note'] ?? null, $request->user(), $data['vehicle_id'] ?? null,
+            (float) $data['litres'], $data['price_per_litre'] ?? null, $data['vehicle'] ?? null, $data['note'] ?? null, $request->user(), $data['vehicle_id'] ?? null,
         );
 
-        return response()->json($voucher->load(['station:id,name', 'driver:id,name']), 201);
+        return response()->json($voucher->load(['station:id,name,location', 'driver:id,name', 'issuer:id,name']), 201);
     }
 
-    public function redeem(Request $request, int $id): JsonResponse
+    /** One voucher with everything the printed copy needs. */
+    public function showVoucher(int $id): JsonResponse
     {
-        $data = $request->validate([
-            'amount_used' => ['required', 'integer', 'min:0', 'max:100000000000'],
-            'litres' => ['nullable', 'numeric', 'min:0', 'max:100000'],
-        ]);
-
-        return response()->json($this->service->redeem($id, $data['amount_used'], $data['litres'] ?? null, $request->user())->load(['station:id,name', 'driver:id,name']));
+        return response()->json(FuelVoucher::with(['station:id,name,location,phone', 'driver:id,name', 'trip:id,number', 'issuer:id,name', 'voider:id,name'])->findOrFail($id));
     }
 
-    public function cancel(int $id): JsonResponse
+    public function void(Request $request, int $id): JsonResponse
     {
-        return response()->json($this->service->cancel($id)->load(['station:id,name', 'driver:id,name']));
+        $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:255']]);
+
+        return response()->json($this->service->void($id, trim($data['reason']), $request->user())->load(['station:id,name,location', 'driver:id,name', 'voider:id,name']));
     }
 
     private function station(FuelStation $s): array
     {
         $balance = $s->balance();
-        $committed = $s->committed();
 
-        return [...$s->only(['id', 'name', 'location', 'phone', 'is_active']), 'balance' => $balance, 'committed' => $committed, 'available' => $balance - $committed];
+        return [
+            ...$s->only(['id', 'name', 'location', 'phone', 'is_active', 'price_per_litre']),
+            'balance' => $balance, 'litres' => $s->litresBalance(), 'tracks_litres' => $s->tracksLitres(),
+        ];
     }
 
     private function stationRules(int $storeId, ?FuelStation $station = null): array
@@ -127,6 +129,7 @@ class FuelController extends Controller
             'name' => ['required', 'string', 'max:100', Rule::unique('fuel_stations', 'name')->where('store_id', $storeId)->ignore($station?->id)],
             'location' => ['nullable', 'string', 'max:150'],
             'phone' => ['nullable', 'string', 'max:30'],
+            'price_per_litre' => ['nullable', 'integer', 'min:1', 'max:10000000'],
             'is_active' => ['sometimes', 'boolean'],
         ];
     }

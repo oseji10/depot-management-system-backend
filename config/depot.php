@@ -8,5 +8,5 @@ return [
     'frontend_url' => rtrim(env('FRONTEND_URL', 'http://localhost:3000'), '/'),
 
     // Brand colour used in emails.
-    'brand_color' => '#BC0F5B',
+    'brand_color' => '#F40009',
 ];

@@ -89,7 +89,7 @@ class AuthController extends Controller
 
         return [
             'user' => $user->only(['id', 'name', 'email', 'phone', 'is_super_admin', 'store_id', 'branch_id']),
-            'store' => $user->store ? [...$user->store->only(['id', 'name', 'slug', 'currency', 'timezone', 'logo_url', 'address', 'phone']), 'disabled_menus' => $user->store->settings['disabled_menus'] ?? []] : null,
+            'store' => $user->store ? [...$user->store->only(['id', 'name', 'slug', 'currency', 'timezone', 'logo_url', 'address', 'phone', 'email']), 'disabled_menus' => $user->store->settings['disabled_menus'] ?? []] : null,
             'subscription' => $user->store_id ? app(\App\Modules\Organization\Services\SubscriptionService::class)->state($user->store_id) : null,
             'branch' => $user->branch?->only(['id', 'name', 'code']),
             'level' => $user->is_super_admin ? 'platform' : ($user->branch_id ? 'branch' : 'store'),

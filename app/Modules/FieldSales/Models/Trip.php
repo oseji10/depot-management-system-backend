@@ -17,7 +17,7 @@ class Trip extends Model
     use Auditable, BelongsToStore, BranchScoped;
 
     protected $fillable = [
-        'store_id', 'branch_id', 'number', 'rep_id', 'van_warehouse_id', 'vehicle_id', 'status', 'opened_at', 'opened_by',
+        'store_id', 'branch_id', 'number', 'rep_id', 'van_warehouse_id', 'vehicle_id', 'pos_terminal_id', 'status', 'opened_at', 'opened_by',
         'closed_at', 'closed_by', 'cash_expected', 'cash_handed_in', 'cash_variance', 'note', 'close_note',
     ];
 
@@ -42,6 +42,11 @@ class Trip extends Model
     public function rep(): BelongsTo
     {
         return $this->belongsTo(User::class, 'rep_id');
+    }
+
+    public function terminal(): BelongsTo
+    {
+        return $this->belongsTo(\App\Modules\Sales\Models\PosTerminal::class, 'pos_terminal_id');
     }
 
     public function vehicle(): BelongsTo

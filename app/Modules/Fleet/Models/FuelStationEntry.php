@@ -13,6 +13,6 @@ class FuelStationEntry extends Model
 
     protected function casts(): array
     {
-        return ['amount' => 'integer', 'entry_date' => 'date'];
+        return ['amount' => 'integer', 'litres' => 'float', 'entry_date' => 'date'];
     }
 }

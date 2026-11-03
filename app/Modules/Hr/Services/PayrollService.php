@@ -11,6 +11,7 @@ use App\Modules\Hr\Models\Payslip;
 use App\Modules\Hr\Models\PayslipLine;
 use App\Modules\Hr\Models\PayrollRun;
 use App\Modules\Hr\Models\StaffCharge;
+use App\Modules\FieldSales\Services\TargetService;
 use App\Modules\Inventory\Services\DocumentNumber;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,7 @@ use Illuminate\Validation\ValidationException;
  */
 class PayrollService
 {
-    public function __construct(private Ledger $ledger, private DocumentNumber $numbers)
+    public function __construct(private Ledger $ledger, private DocumentNumber $numbers, private TargetService $targets)
     {
     }
 
@@ -228,6 +229,15 @@ class PayrollService
 
         foreach ($items->where('kind', 'earning') as $item) {
             $lines[] = ['earning', 'pay_item', $item->id, $item->name, $item->amountFor($basic, $overrides[$item->id] ?? null)];
+        }
+
+        // Sales rewards are not basic pay: each product's reward is its own earning line, for staff who have a salesperson login.
+        if ($employee->user_id) {
+            $run = PayrollRun::find($slip->payroll_run_id);
+
+            foreach ($this->targets->payrollLines($slip->store_id, $employee->user_id, $run->period) as $reward) {
+                $lines[] = ['earning', 'target', $reward['id'], $reward['label'], $reward['amount']];
+            }
         }
 
         $gross = array_sum(array_column($lines, 4)) + (int) $manual->where('kind', 'earning')->sum('amount');

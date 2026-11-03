@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Modules\FieldSales\Models\Trip;
 use App\Modules\FieldSales\Services\TripService;
+use App\Modules\FieldSales\Services\RepRoutes;
 use App\Modules\Inventory\Models\StockBalance;
 use App\Modules\Organization\Models\Warehouse;
 use App\Modules\Sales\Models\Sale;
@@ -35,10 +36,12 @@ class RepController extends Controller
         $open = Trip::where('status', 'open')->whereIn('rep_id', $users->keys())->get()->keyBy('rep_id');
         $onVan = StockBalance::whereIn('warehouse_id', $vans->pluck('id'))->where('status', 'saleable')
             ->groupBy('warehouse_id')->selectRaw('warehouse_id, SUM(quantity) AS units')->pluck('units', 'warehouse_id');
+        $routes = \Illuminate\Support\Facades\DB::table('rep_routes')->join('customer_groups', 'customer_groups.id', '=', 'rep_routes.customer_group_id')
+            ->whereIn('rep_routes.user_id', $users->keys())->orderBy('customer_groups.name')->get(['rep_routes.user_id', 'customer_groups.id', 'customer_groups.name'])->groupBy('user_id');
         $today = Sale::where('status', 'completed')->whereIn('created_by', $users->keys())->where('sold_at', '>=', now()->startOfDay())
             ->groupBy('created_by')->selectRaw('created_by, SUM(total) AS total, COUNT(*) AS orders')->get()->keyBy('created_by');
 
-        $rows = $vans->filter(fn ($v) => $users->has($v->assigned_user_id))->map(function (Warehouse $v) use ($users, $staff, $open, $onVan, $today) {
+        $rows = $vans->filter(fn ($v) => $users->has($v->assigned_user_id))->map(function (Warehouse $v) use ($users, $staff, $open, $onVan, $today, $routes) {
             $u = $users[$v->assigned_user_id];
             $trip = $open[$u->id] ?? null;
 
@@ -47,6 +50,7 @@ class RepController extends Controller
                 'employee' => isset($staff[$u->id]) ? ['id' => $staff[$u->id]->id, 'staff_no' => $staff[$u->id]->staff_no, 'status' => $staff[$u->id]->status] : null,
                 'branch' => $v->branch, 'van' => ['id' => $v->id, 'name' => $v->name],
                 'open_trip' => $trip ? ['id' => $trip->id, 'number' => $trip->number, 'opened_at' => $trip->opened_at, 'device_pending' => (int) $trip->device_pending, 'device_seen_at' => $trip->device_seen_at] : null,
+                'routes' => ($routes[$u->id] ?? collect())->map(fn ($r) => ['id' => $r->id, 'name' => $r->name])->values(),
                 'units_on_van' => (int) ($onVan[$v->id] ?? 0),
                 'sold_today' => (int) ($today[$u->id]->total ?? 0), 'orders_today' => (int) ($today[$u->id]->orders ?? 0),
             ];
@@ -65,9 +69,14 @@ class RepController extends Controller
             'phone' => ['nullable', 'string', 'max:30'],
             'password' => ['required', Password::min(8)],
             'branch_id' => ['required', 'integer'],
+            'route_ids' => ['sometimes', 'array'],
+            'route_ids.*' => ['integer'],
         ]);
+        $routeIds = $data['route_ids'] ?? [];
+        unset($data['route_ids']);
 
         $user = $this->trips->createRep($data, $storeId);
+        RepRoutes::assign($user->id, $routeIds);
 
         return response()->json($user->only(['id', 'name', 'email', 'phone']), 201);
     }
@@ -82,7 +91,14 @@ class RepController extends Controller
             'phone' => ['nullable', 'string', 'max:30'],
             'password' => ['nullable', Password::min(8)],
             'is_active' => ['sometimes', 'boolean'],
+            'route_ids' => ['sometimes', 'array'],
+            'route_ids.*' => ['integer'],
         ]);
+
+        if (array_key_exists('route_ids', $data)) {
+            RepRoutes::assign($user->id, $data['route_ids']);
+            unset($data['route_ids']);
+        }
 
         abort_if(
             array_key_exists('is_active', $data) && ! $data['is_active'] && $this->trips->openTripFor($user),

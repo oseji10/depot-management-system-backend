@@ -115,10 +115,10 @@ class SyncService
 
         $d = Validator::make($d, [
             'name' => ['required', 'string', 'max:150'], 'type' => ['nullable', Rule::in(Customer::TYPES)],
-            'phone' => ['nullable', 'string', 'max:30'], 'address' => ['nullable', 'string', 'max:255'],
+            'phone' => ['required', 'string', 'max:30'], 'address' => ['required', 'string', 'max:255'],
         ])->validate();
 
-        $phone = ($d['phone'] ?? null) ?: null;
+        $phone = $d['phone'];
 
         // The same person may already be on file (someone added them at the depot meanwhile). Use that record.
         if ($phone && ($same = Customer::withoutGlobalScopes()->where('store_id', $rep->store_id)->where('phone', $phone)->first())) {
@@ -133,6 +133,7 @@ class SyncService
         ]);
 
         $customers[$ref] = $customer->id;
+        RepRoutes::addCustomer($rep->id, $customer->id);
         $this->resolve($rep, 'customer', $ref, "Recorded as customer {$customer->id}");
 
         return ['status' => 'created', 'id' => $customer->id];
@@ -168,6 +169,7 @@ class SyncService
             'empties_returned.*.quantity' => ['required', 'integer', 'min:1', 'max:100000'],
             'payments.*.method' => ['required', Rule::in(SalePayment::METHODS)], 'payments.*.amount' => ['required', 'integer', 'min:1', 'max:100000000000'],
             'payments.*.reference' => ['nullable', 'string', 'max:80'], 'payments.*.pos_terminal_id' => ['nullable', 'integer'],
+            'payments.*.transfer_to' => ['nullable', Rule::in(['pos', 'account'])], 'payments.*.account_id' => ['nullable', 'integer'],
         ])->validate();
 
         if (! empty($d['customer_id']) && ! Customer::withoutGlobalScopes()->where('store_id', $rep->store_id)->whereKey($d['customer_id'])->exists()) {

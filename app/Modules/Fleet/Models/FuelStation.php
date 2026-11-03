@@ -11,7 +11,7 @@ class FuelStation extends Model
 {
     use Auditable, BelongsToStore;
 
-    protected $fillable = ['store_id', 'name', 'location', 'phone', 'is_active'];
+    protected $fillable = ['store_id', 'name', 'location', 'phone', 'price_per_litre', 'is_active'];
 
     protected function casts(): array
     {
@@ -29,9 +29,15 @@ class FuelStation extends Model
         return (int) $this->entries()->sum('amount');
     }
 
-    /** What is left once vouchers already handed out but not yet used are set aside. */
-    public function committed(): int
+    /** Litres left with the station. Stations that were topped up before litres were tracked have none recorded. */
+    public function litresBalance(): float
     {
-        return (int) FuelVoucher::withoutGlobalScopes()->where('fuel_station_id', $this->id)->where('status', 'issued')->sum('amount');
+        return round((float) $this->entries()->sum('litres'), 2);
+    }
+
+    /** Has this station ever been topped up in litres? If not, litres are not enforced when a voucher is issued. */
+    public function tracksLitres(): bool
+    {
+        return $this->entries()->whereNotNull('litres')->exists();
     }
 }

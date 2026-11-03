@@ -15,7 +15,7 @@ class SalePayment extends Model
 
     public const METHODS = ['cash', 'transfer', 'pos'];
 
-    protected $fillable = ['store_id', 'branch_id', 'sale_id', 'method', 'pos_terminal_id', 'amount', 'reference', 'paid_at', 'received_by', 'voided_at'];
+    protected $fillable = ['store_id', 'branch_id', 'sale_id', 'method', 'pos_terminal_id', 'transfer_to', 'account_id', 'amount', 'reference', 'paid_at', 'received_by', 'voided_at'];
 
     protected function casts(): array
     {
@@ -30,6 +30,11 @@ class SalePayment extends Model
     public function terminal(): BelongsTo
     {
         return $this->belongsTo(PosTerminal::class, 'pos_terminal_id');
+    }
+
+    public function account(): BelongsTo
+    {
+        return $this->belongsTo(\App\Modules\Accounting\Models\Account::class, 'account_id');
     }
 
     public function receiver(): BelongsTo

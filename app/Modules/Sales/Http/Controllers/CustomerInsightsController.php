@@ -107,6 +107,12 @@ class CustomerInsightsController extends Controller
 
     // ---- groups ----
 
+    /** The groups a customer can be put in (for the add-customer form). */
+    public function groups(): JsonResponse
+    {
+        return response()->json(['data' => CustomerGroup::where('is_active', true)->orderBy('name')->get(['id', 'name', 'kind'])]);
+    }
+
     public function storeGroup(Request $request): JsonResponse
     {
         $storeId = $this->access->requireStoreId();

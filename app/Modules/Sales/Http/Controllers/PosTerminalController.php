@@ -29,7 +29,10 @@ class PosTerminalController extends Controller
     {
         $branch = $request->integer('branch_id') ?: $request->user()->branch_id;
 
-        return response()->json(['data' => PosTerminal::usableAt($branch, $request->user()->id)->orderBy('name')->get(['id', 'name', 'provider'])]);
+        return response()->json([
+            'data' => PosTerminal::usableAt($branch, $request->user()->id)->orderBy('name')->get(['id', 'name', 'provider', 'account_id']),
+            'accounts' => \App\Modules\Sales\Services\PosCatalogue::transferAccounts(),
+        ]);
     }
 
     public function show(int $id): JsonResponse

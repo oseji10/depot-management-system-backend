@@ -15,11 +15,11 @@ class Account extends Model
     /** Types whose natural balance is a debit. Everything else is a credit balance. */
     public const DEBIT_TYPES = ['asset', 'cogs', 'expense'];
 
-    protected $fillable = ['store_id', 'code', 'name', 'type', 'role', 'is_system', 'is_active'];
+    protected $fillable = ['store_id', 'code', 'name', 'type', 'role', 'is_system', 'is_active', 'is_bank', 'bank_name', 'account_number', 'account_name'];
 
     protected function casts(): array
     {
-        return ['is_system' => 'boolean', 'is_active' => 'boolean'];
+        return ['is_system' => 'boolean', 'is_active' => 'boolean', 'is_bank' => 'boolean'];
     }
 
     public function isDebitNormal(): bool

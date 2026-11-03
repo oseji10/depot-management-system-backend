@@ -67,8 +67,8 @@ class VehicleController extends Controller
             'fuel_vouchers' => $vouchers,
             'totals' => [
                 'trips' => Trip::where('vehicle_id', $v->id)->count(),
-                'fuel' => (int) FuelVoucher::where('vehicle_id', $v->id)->where('status', 'redeemed')->sum('amount_used'),
-                'litres' => (float) FuelVoucher::where('vehicle_id', $v->id)->where('status', 'redeemed')->sum('litres'),
+                'fuel' => (int) FuelVoucher::where('vehicle_id', $v->id)->where('status', '!=', 'cancelled')->sum('amount_used'),
+                'litres' => (float) FuelVoucher::where('vehicle_id', $v->id)->where('status', '!=', 'cancelled')->sum('litres'),
                 'maintenance' => (int) $v->services()->sum('cost'),
             ],
         ]);

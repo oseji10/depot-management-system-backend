@@ -40,11 +40,20 @@ class PosTerminal extends Model
         return $this->belongsTo(User::class, 'assigned_user_id');
     }
 
-    /** Terminals a user may take a card payment on at a branch: that branch's (or any-branch) machines that are not carried by someone else. */
+    /**
+     * Terminals a user may take a card payment on at a branch. A person who has been handed a machine (a salesperson on a trip)
+     * uses only that one. Everyone else uses the branch's (or any-branch) machines that nobody is carrying.
+     */
     public function scopeUsableAt(Builder $q, ?int $branchId, int $userId): Builder
     {
+        $carried = static::withoutGlobalScopes()->where('is_active', true)->where('assigned_user_id', $userId)->exists();
+
+        if ($carried) {
+            return $q->where('is_active', true)->where('assigned_user_id', $userId);
+        }
+
         return $q->where('is_active', true)
             ->when($branchId, fn ($q) => $q->where(fn ($w) => $w->whereNull('branch_id')->orWhere('branch_id', $branchId)))
-            ->where(fn ($w) => $w->whereNull('assigned_user_id')->orWhere('assigned_user_id', $userId));
+            ->whereNull('assigned_user_id');
     }
 }

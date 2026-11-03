@@ -34,7 +34,7 @@ class Permissions
             'customers.view', 'customers.manage',
         ],
         'Field sales' => [
-            'trips.view', 'trips.manage',
+            'trips.view', 'trips.manage', 'targets.view', 'targets.manage',
         ],
         'Rebates' => [
             'rebates.view', 'rebates.configure', 'rebates.calculate', 'rebates.approve', 'rebates.settle',
@@ -71,7 +71,7 @@ class Permissions
             'Accountant' => [
                 'branches.view', 'rebates.calculate', 'rebates.approve', 'rebates.settle', 'accounts.view', 'accounts.manage', 'journals.create', 'journals.post', 'journals.reverse', 'periods.close', 'expenses.view', 'expenses.create', 'expenses.manage',
                 'expenses.approve', 'reports.view', 'rebates.view', 'customers.view', 'customers.manage', 'sales.view', 'sales.create', 'sales.refund', 'employees.view', 'payroll.view', 'payroll.manage', 'payroll.approve', 'payroll.pay', 'staff-charges.view', 'staff-charges.manage', 'staff-charges.approve', 'terminals.view', 'terminals.manage',
-                'products.view', 'pricing.view', 'inventory.view', 'purchasing.view', 'goods-receipts.view', 'trips.view', 'containers.view',
+                'products.view', 'pricing.view', 'inventory.view', 'purchasing.view', 'goods-receipts.view', 'trips.view', 'containers.view', 'targets.view',
                 'imprest.view', 'imprest.manage', 'fuel.view', 'fuel.manage', 'vehicles.view',
             ],
             'Inventory Officer' => [
@@ -91,7 +91,7 @@ class Permissions
             ],
             'Delivery Coordinator' => ['sales.view', 'deliveries.view', 'deliveries.manage', 'vehicles.view', 'vehicles.manage'],
             'Driver' => ['deliveries.view'],
-            'HR Officer' => ['users.view', 'employees.view', 'employees.manage', 'payroll.view', 'payroll.manage', 'staff-charges.view', 'staff-charges.manage'],
+            'HR Officer' => ['users.view', 'employees.view', 'employees.manage', 'payroll.view', 'payroll.manage', 'staff-charges.view', 'staff-charges.manage', 'targets.view'],
             'Auditor' => array_values(array_unique(array_merge($views, ['audit.view', 'reports.view']))),
         ];
     }

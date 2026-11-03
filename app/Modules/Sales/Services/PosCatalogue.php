@@ -18,6 +18,24 @@ class PosCatalogue
     {
     }
 
+    /**
+     * Bank accounts a customer's transfer can land in: the main Bank account plus every bank account the business added.
+     * Each says which card machines settle into it, so the till can show them as "POS" accounts.
+     */
+    public static function transferAccounts()
+    {
+        $machines = PosTerminal::where('is_active', true)->whereNotNull('account_id')->get(['id', 'account_id'])->groupBy('account_id');
+
+        return \App\Modules\Accounting\Models\Account::where('type', 'asset')->where('is_active', true)
+            ->where(fn ($q) => $q->where('is_bank', true)->orWhere('role', 'bank'))->orderBy('code')
+            ->get(['id', 'code', 'name', 'role', 'bank_name', 'account_number', 'account_name'])
+            ->map(fn ($a) => [
+                'id' => $a->id, 'code' => $a->code, 'name' => $a->name, 'bank_name' => $a->bank_name,
+                'account_number' => $a->account_number, 'account_name' => $a->account_name,
+                'is_main' => $a->role === 'bank', 'terminal_ids' => ($machines[$a->id] ?? collect())->pluck('id')->values(),
+            ])->values();
+    }
+
     public function build(Warehouse $warehouse): array
     {
         $effective = $this->prices->effective()->keyBy('product_unit_id');
@@ -74,7 +92,8 @@ class PosCatalogue
         return [
             'warehouse' => ['id' => $warehouse->id, 'name' => $warehouse->name, 'branch_id' => $warehouse->branch_id],
             'categories' => ProductCategory::orderBy('name')->get(['id', 'name']),
-            'terminals' => PosTerminal::usableAt($warehouse->branch_id, (int) auth()->id())->orderBy('name')->get(['id', 'name', 'provider']),
+            'terminals' => PosTerminal::usableAt($warehouse->branch_id, (int) auth()->id())->orderBy('name')->get(['id', 'name', 'provider', 'account_id']),
+            'transfer_accounts' => self::transferAccounts(),
             'containers' => ContainerType::where('is_active', true)->orderBy('name')->get(['id', 'name', 'kind', 'deposit']),
             'products' => $rows,
             'unpriced' => $unpriced,

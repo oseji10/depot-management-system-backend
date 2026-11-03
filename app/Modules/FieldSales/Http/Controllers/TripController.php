@@ -62,6 +62,19 @@ class TripController extends Controller
         ]);
     }
 
+    /** Card machines that can be handed to a salesperson with their load: active ones that nobody else is carrying. */
+    public function terminals(Request $request): JsonResponse
+    {
+        $rep = $request->integer('rep_id');
+
+        $rows = \App\Modules\Sales\Models\PosTerminal::query()->where('is_active', true)
+            ->where(fn ($q) => $q->whereNull('assigned_user_id')->when($rep, fn ($w) => $w->orWhere('assigned_user_id', $rep)))
+            ->orderBy('name')->get(['id', 'name', 'provider', 'branch_id', 'assigned_user_id'])
+            ->map(fn ($t) => [...$t->only(['id', 'name', 'provider', 'branch_id']), 'with_rep' => $rep && $t->assigned_user_id === $rep]);
+
+        return response()->json(['data' => $rows]);
+    }
+
     public function issue(Request $request): JsonResponse
     {
         $storeId = $this->access->requireStoreId();
@@ -70,6 +83,7 @@ class TripController extends Controller
             'rep_id' => ['required', 'integer'],
             'from_warehouse_id' => ['required', 'integer'],
             'vehicle_id' => ['nullable', 'integer', Rule::exists('vehicles', 'id')->where('store_id', $storeId)],
+            'pos_terminal_id' => ['nullable', 'integer', Rule::exists('pos_terminals', 'id')->where('store_id', $storeId)],
             'note' => ['nullable', 'string', 'max:500'],
             'lines' => ['required', 'array', 'min:1', 'max:200'],
             'lines.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('store_id', $storeId)],
@@ -80,7 +94,7 @@ class TripController extends Controller
         $rep = User::query()->visibleToActor()->findOrFail($data['rep_id']);
         $from = Warehouse::findOrFail($data['from_warehouse_id']);
 
-        $trip = $this->trips->issue($rep, $from, $data['lines'], $data['note'] ?? null, $request->user(), $data['vehicle_id'] ?? null);
+        $trip = $this->trips->issue($rep, $from, $data['lines'], $data['note'] ?? null, $request->user(), $data['vehicle_id'] ?? null, $data['pos_terminal_id'] ?? null);
 
         return response()->json($this->trips->report($trip), 201);
     }

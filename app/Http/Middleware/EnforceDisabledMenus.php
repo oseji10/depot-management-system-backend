@@ -43,6 +43,8 @@ class EnforceDisabledMenus
         '/pos-terminals' => ['pos-terminals'],
         '/expenses' => ['expenses', 'expense-categories'],
         '/journals' => ['journals'],
+        '/bank-accounts' => ['bank-accounts'],
+        '/targets' => ['targets', 'target-rules'],
         '/bank-reconciliation' => ['bank-statements'],
         '/fiscal-periods' => ['fiscal-periods'],
         '/reports' => ['reports'],

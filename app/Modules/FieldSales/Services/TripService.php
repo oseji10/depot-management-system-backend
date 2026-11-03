@@ -20,6 +20,7 @@ use App\Modules\Sales\Models\Sale;
 use App\Modules\Fleet\Models\Vehicle;
 use App\Modules\Sales\Models\SalePayment;
 use App\Support\Permissions;
+use App\Modules\Sales\Models\PosTerminal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
@@ -78,9 +79,9 @@ class TripService
      *
      * @param  array<int, array{product_id:int, unit_id:int, quantity:int}>  $lines
      */
-    public function issue(User $rep, Warehouse $from, array $lines, ?string $note, User $actor, ?int $vehicleId = null): Trip
+    public function issue(User $rep, Warehouse $from, array $lines, ?string $note, User $actor, ?int $vehicleId = null, ?int $terminalId = null): Trip
     {
-        return DB::transaction(function () use ($rep, $from, $lines, $note, $actor, $vehicleId) {
+        return DB::transaction(function () use ($rep, $from, $lines, $note, $actor, $vehicleId, $terminalId) {
             $van = Warehouse::vanOf($rep->id) ?? throw ValidationException::withMessages(['rep_id' => 'That user is not a salesperson.']);
 
             if (! $rep->is_active) {
@@ -118,6 +119,10 @@ class TripService
 
             if ($vehicleId && ! $trip->vehicle_id) {
                 $trip->update(['vehicle_id' => $vehicleId]);
+            }
+
+            if ($terminalId) {
+                $this->handTerminal($trip, $rep, $van, $terminalId);
             }
 
             $load = TripLoad::create([
@@ -259,7 +264,7 @@ class TripService
     /** Everything the trip screens show: per-product loaded/sold/back, sales, money, and the load history. */
     public function report(Trip $trip): array
     {
-        $trip->loadMissing(['rep:id,name,phone', 'van:id,name', 'vehicle:id,reg_no,nickname,type']);
+        $trip->loadMissing(['rep:id,name,phone', 'van:id,name', 'vehicle:id,reg_no,nickname,type', 'terminal:id,name,provider']);
 
         $sold = DB::table('sale_lines')->join('sales', 'sales.id', '=', 'sale_lines.sale_id')
             ->where('sales.trip_id', $trip->id)->where('sales.status', 'completed')
@@ -297,7 +302,7 @@ class TripService
 
         return [
             'trip' => $trip->only(['id', 'number', 'status', 'opened_at', 'closed_at', 'note', 'close_note', 'branch_id', 'van_warehouse_id']),
-            'rep' => $trip->rep, 'van' => $trip->van, 'vehicle' => $trip->vehicle,
+            'rep' => $trip->rep, 'van' => $trip->van, 'vehicle' => $trip->vehicle, 'terminal' => $trip->terminal,
             'lines' => $lines,
             'totals' => [
                 'issued' => (int) $lines->sum('issued'), 'sold' => (int) $lines->sum('sold'), 'with_rep' => (int) $lines->sum('with_rep'),
@@ -326,6 +331,41 @@ class TripService
                 'lines' => $l->lines->map(fn ($x) => ['product' => $x->product?->name, 'status' => $x->status, 'quantity' => $x->quantity])->values(),
             ])->values(),
         ];
+    }
+
+    /**
+     * Hands a card machine to the salesperson for this trip. From then on their card (and POS-transfer) payments go on that
+     * machine, and nobody else can use it. Any other machine they were carrying is released.
+     */
+    private function handTerminal(Trip $trip, User $rep, Warehouse $van, int $terminalId): void
+    {
+        $terminal = PosTerminal::lockForUpdate()->find($terminalId) ?? throw ValidationException::withMessages(['pos_terminal_id' => 'That card terminal was not found.']);
+
+        if (! $terminal->is_active) {
+            throw ValidationException::withMessages(['pos_terminal_id' => "{$terminal->name} is switched off."]);
+        }
+
+        if ($terminal->branch_id && $terminal->branch_id !== $van->branch_id) {
+            throw ValidationException::withMessages(['pos_terminal_id' => "{$terminal->name} belongs to another branch."]);
+        }
+
+        if ($terminal->assigned_user_id && $terminal->assigned_user_id !== $rep->id) {
+            $holder = User::withoutGlobalScopes()->whereKey($terminal->assigned_user_id)->value('name');
+
+            throw ValidationException::withMessages(['pos_terminal_id' => "{$terminal->name} is already with {$holder}."]);
+        }
+
+        PosTerminal::where('assigned_user_id', $rep->id)->where('id', '!=', $terminal->id)->update(['assigned_user_id' => null]);
+        $terminal->update(['assigned_user_id' => $rep->id]);
+        $trip->update(['pos_terminal_id' => $terminal->id]);
+    }
+
+    /** The machine comes back when the trip closes. */
+    private function releaseTerminal(Trip $trip): void
+    {
+        if ($trip->pos_terminal_id) {
+            PosTerminal::withoutGlobalScopes()->whereKey($trip->pos_terminal_id)->where('assigned_user_id', $trip->rep_id)->update(['assigned_user_id' => null]);
+        }
     }
 
     private function closeOut(Trip $trip, Warehouse $van, \Closure $newLoad, int $cashHandedIn, ?string $note, User $actor, ?int $imprestReturned = null): void
@@ -357,6 +397,8 @@ class TripService
         $this->imprest->settle($trip, $imprestReturned, $actor);
 
         $expected = $this->cashExpected($trip->setAttribute('closed_at', now()));
+
+        $this->releaseTerminal($trip);
 
         $trip->update([
             'status' => 'closed', 'closed_at' => now(), 'closed_by' => $actor->id, 'close_note' => $note,

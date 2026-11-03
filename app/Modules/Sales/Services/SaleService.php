@@ -68,8 +68,8 @@ class SaleService
 
             $trip = $this->tripFor($warehouse, $actor);
 
-            // Card payments must say which machine took them.
-            $data['payments'] = array_map(fn ($p) => [...$p, 'pos_terminal_id' => $this->terminalFor($p, $warehouse->branch_id, $actor, $storeId)], $data['payments'] ?? []);
+            // Card payments must say which machine took them; transfers say where the money went.
+            $data['payments'] = array_map(fn ($p) => $this->preparePayment($p, $warehouse->branch_id, $actor, $storeId), $data['payments'] ?? []);
 
             $lines = $this->assertMixes($this->priceLines($data['lines'], $actor, $opts), $storeId);
             $soldAt = $this->soldAt($opts, $trip, $storeId);
@@ -152,11 +152,45 @@ class SaleService
                 throw ValidationException::withMessages(['amount' => sprintf('Only %s is still owed on this sale.', number_format($sale->balance_due / 100, 2))]);
             }
 
-            $payment['pos_terminal_id'] = $this->terminalFor($payment, $sale->branch_id, $actor, $sale->store_id);
-            $this->record($sale, $payment, $actor);
+            $this->record($sale, $this->preparePayment($payment, $sale->branch_id, $actor, $sale->store_id), $actor);
 
             return $sale;
         });
+    }
+
+    /**
+     * Settles what a payment line needs before it is saved.
+     *  card      -> the machine that took it
+     *  transfer  -> where the money went: transfer_to 'pos' (the carried or chosen machine's own account) or 'account' (any
+     *               account from the list). Phones on an older version send no destination; those fall back to the Bank account.
+     *  cash      -> nothing extra
+     */
+    private function preparePayment(array $p, ?int $branchId, User $actor, int $storeId): array
+    {
+        $none = ['pos_terminal_id' => null, 'transfer_to' => null, 'account_id' => null];
+        $method = $p['method'] ?? null;
+
+        if ($method === 'pos') {
+            return [...$p, ...$none, 'pos_terminal_id' => $this->terminalFor($p, $branchId, $actor, $storeId)];
+        }
+
+        if ($method !== 'transfer' || empty($p['transfer_to'])) {
+            return [...$p, ...$none];
+        }
+
+        if ($p['transfer_to'] === 'pos') {
+            $terminal = $this->terminalFor([...$p, 'method' => 'pos'], $branchId, $actor, $storeId)
+                ?? throw ValidationException::withMessages(['payments' => 'No POS terminal is set up to receive transfers. Choose another account.']);
+
+            return [...$p, ...$none, 'transfer_to' => 'pos', 'pos_terminal_id' => $terminal,
+                'account_id' => PosTerminal::withoutGlobalScopes()->whereKey($terminal)->value('account_id')];
+        }
+
+        $account = \App\Modules\Accounting\Models\Account::withoutGlobalScopes()->where('store_id', $storeId)->where('type', 'asset')->where('is_active', true)
+            ->where(fn ($q) => $q->whereNull('role')->orWhere('role', 'bank'))->whereKey($p['account_id'] ?? 0)->value('id')
+            ?? throw ValidationException::withMessages(['payments' => 'Choose the account the transfer was paid into.']);
+
+        return [...$p, ...$none, 'transfer_to' => 'account', 'account_id' => $account];
     }
 
     /**
@@ -174,6 +208,11 @@ class SaleService
         if ($id = $p['pos_terminal_id'] ?? null) {
             return (clone $usable)->whereKey($id)->value('id')
                 ?? throw ValidationException::withMessages(['payments' => 'That card terminal is not available for this sale.']);
+        }
+
+        // A salesperson carrying a machine does not choose: it is the one they were handed.
+        if ((clone $usable)->where('assigned_user_id', $actor->id)->exists()) {
+            return (clone $usable)->where('assigned_user_id', $actor->id)->value('id');
         }
 
         if ($usable->exists()) {
@@ -268,7 +307,7 @@ class SaleService
     {
         $payment = SalePayment::create([
             'store_id' => $sale->store_id, 'branch_id' => $sale->branch_id, 'sale_id' => $sale->id,
-            'method' => $p['method'], 'pos_terminal_id' => $p['pos_terminal_id'] ?? null, 'amount' => $p['amount'], 'reference' => $p['reference'] ?? null,
+            'method' => $p['method'], 'pos_terminal_id' => $p['pos_terminal_id'] ?? null, 'transfer_to' => $p['transfer_to'] ?? null, 'account_id' => $p['account_id'] ?? null, 'amount' => $p['amount'], 'reference' => $p['reference'] ?? null,
             'paid_at' => $at ?? now(), 'received_by' => $actor->id,
         ]);
 

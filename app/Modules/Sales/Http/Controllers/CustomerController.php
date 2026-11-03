@@ -7,6 +7,7 @@ use App\Modules\Sales\Models\Customer;
 use App\Support\Tenancy\AccessScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Modules\Sales\Models\CustomerGroup;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
@@ -18,7 +19,11 @@ class CustomerController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        // A salesperson with routes sees their routes' customers unless they ask for everyone.
+        $routeCustomers = $request->boolean('all_routes') ? null : \App\Modules\FieldSales\Services\RepRoutes::customerIds((int) $request->user()->id);
+
         $paginator = Customer::query()
+            ->when($routeCustomers !== null, fn ($q) => $q->whereIn('id', $routeCustomers))
             ->when($request->query('search'), fn ($q, $s) => $q->where(
                 fn ($w) => $w->where('name', 'like', "%{$s}%")->orWhere('phone', 'like', "%{$s}%")
             ))
@@ -57,15 +62,28 @@ class CustomerController extends Controller
 
         $data = $request->validate($this->rules($storeId));
         $data['empties_mode'] ??= ($data['type'] ?? 'retail') === 'wholesale' ? 'balance' : 'deposit';
+        $groupIds = $data['group_ids'] ?? [];
+        unset($data['group_ids']);
 
-        return response()->json(Customer::create([...$data, 'store_id' => $storeId]), 201);
+        $customer = DB::transaction(function () use ($data, $storeId, $groupIds) {
+            $customer = Customer::create([...$data, 'store_id' => $storeId]);
+
+            // Put the new customer straight into the groups (route, area, segment) picked on the form.
+            foreach (CustomerGroup::whereIn('id', $groupIds)->pluck('id') as $groupId) {
+                DB::table('customer_group_members')->insert(['customer_group_id' => $groupId, 'customer_id' => $customer->id, 'created_at' => now()]);
+            }
+
+            return $customer;
+        });
+
+        return response()->json($customer, 201);
     }
 
     /** Customers are never deleted (sales reference them). Disable them instead. */
     public function update(Request $request, int $id): JsonResponse
     {
         $customer = Customer::findOrFail($id);
-        $customer->update($request->validate($this->rules($customer->store_id, $customer)));
+        $customer->update(collect($request->validate($this->rules($customer->store_id, $customer)))->except('group_ids')->all());
 
         return response()->json($customer);
     }
@@ -75,9 +93,11 @@ class CustomerController extends Controller
         return [
             'name' => ['required', 'string', 'max:150'],
             'type' => ['sometimes', Rule::in(Customer::TYPES)],
-            'phone' => ['nullable', 'string', 'max:30', Rule::unique('customers', 'phone')->where('store_id', $storeId)->ignore($customer?->id)],
+            // Required for every customer. Editing an old customer who has none only forces it when the form sends the field.
+            'phone' => [$customer ? 'sometimes' : 'required', 'string', 'max:30', Rule::unique('customers', 'phone')->where('store_id', $storeId)->ignore($customer?->id)],
             'email' => ['nullable', 'email', 'max:150'],
-            'address' => ['nullable', 'string', 'max:255'],
+            'address' => [$customer ? 'sometimes' : 'required', 'string', 'max:255'],
+            'group_ids' => ['sometimes', 'array', 'max:50'], 'group_ids.*' => ['integer'],
             'empties_mode' => ['sometimes', Rule::in(Customer::EMPTIES_MODES)],
             'credit_limit' => ['sometimes', 'integer', 'min:0', 'max:100000000000'],
             'notes' => ['nullable', 'string', 'max:500'],
