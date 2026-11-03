@@ -123,6 +123,7 @@ Route::prefix('v1')->group(function () {
         Route::get('users', [UserController::class, 'index'])->middleware('can:users.view');
         Route::post('users', [UserController::class, 'store'])->middleware('can:users.create');
         Route::get('users/{id}', [UserController::class, 'show'])->middleware('can:users.view');
+        Route::post('users/{id}/send-reset', [UserController::class, 'sendReset'])->middleware('can:users.update');
         Route::put('users/{id}', [UserController::class, 'update'])->middleware('can:users.update');
 
         // The role list is also needed by the user form, so RoleController::index checks its own permissions.

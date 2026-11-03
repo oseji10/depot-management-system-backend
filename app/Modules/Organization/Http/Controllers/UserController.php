@@ -78,6 +78,27 @@ class UserController extends Controller
         return response()->json($user, 201);
     }
 
+    /** Email the person a link to choose a new password. Sent immediately so a failure is reported, not hidden. */
+    public function sendReset(int $id): JsonResponse
+    {
+        $user = $this->find($id);
+        $this->assertCanManage($user);
+
+        abort_unless($user->is_active, 422, 'This user is disabled. Enable them first.');
+        abort_unless($user->email, 422, 'This user has no email address.');
+
+        try {
+            $token = \Illuminate\Support\Facades\Password::broker()->createToken($user);
+            $url = config('depot.frontend_url').'/reset-password/?token='.$token.'&email='.urlencode($user->email);
+            \Illuminate\Support\Facades\Mail::to($user->email)->send(new \App\Mail\PasswordResetMail($user->name, $url, (int) config('auth.passwords.users.expire', 60)));
+        } catch (\Throwable $e) {
+            report($e);
+            abort(422, 'The email could not be sent: '.$e->getMessage());
+        }
+
+        return response()->json(['message' => 'A password reset link was sent to '.$user->email.'.']);
+    }
+
     public function update(Request $request, int $id): JsonResponse
     {
         $user = $this->find($id);

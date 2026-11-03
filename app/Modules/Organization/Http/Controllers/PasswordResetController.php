@@ -24,7 +24,7 @@ class PasswordResetController extends Controller
             try {
                 $token = Password::broker()->createToken($user);
                 $url = config('depot.frontend_url').'/reset-password/?token='.$token.'&email='.urlencode($user->email);
-                Mail::to($user->email)->queue(new PasswordResetMail($user->name, $url, (int) config('auth.passwords.users.expire', 60)));
+                Mail::to($user->email)->send(new PasswordResetMail($user->name, $url, (int) config('auth.passwords.users.expire', 60)));
             } catch (\Throwable $e) {
                 report($e);
             }

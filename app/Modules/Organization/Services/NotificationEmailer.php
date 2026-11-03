@@ -82,7 +82,7 @@ class NotificationEmailer
         $days = DB::table('subscriptions')->where('store_id', $store->id)->where('kind', 'trial')->value('ends_at');
         $trialDays = $days ? max(0, (int) ceil(now()->floatDiffInDays($days, false))) : null;
 
-        $this->deliver($owner->email, new WelcomeMail($owner->name, $store->name, $owner->email, config('depot.frontend_url').'/login/', $trialDays));
+        $this->deliver($owner->email, new WelcomeMail($owner->name, $store->name, $owner->email, config('depot.frontend_url').'/login/', $trialDays), true);
     }
 
     public function accountCreated(User $user, int $storeId, string $role): void
@@ -94,7 +94,7 @@ class NotificationEmailer
         $storeName = (string) DB::table('stores')->where('id', $storeId)->value('name');
         $base = config('depot.frontend_url');
 
-        $this->deliver($user->email, new AccountCreatedMail($user->name, $storeName, $user->email, $role, $base.'/login/', $base.'/forgot-password/'));
+        $this->deliver($user->email, new AccountCreatedMail($user->name, $storeName, $user->email, $role, $base.'/login/', $base.'/forgot-password/'), true);
     }
 
     /**
@@ -115,12 +115,14 @@ class NotificationEmailer
             ->values();
     }
 
-    private function deliver(string $email, $mailable): void
+    /** Sign-in emails (welcome, new account, password reset) go out immediately, so they never wait for a queue worker that may not be running. */
+    private function deliver(string $email, $mailable, bool $now = false): void
     {
         try {
-            Mail::to($email)->queue($mailable);
+            $now ? Mail::to($email)->send($mailable) : Mail::to($email)->queue($mailable);
         } catch (\Throwable $e) {
             report($e);
+            \Log::error('Email to '.$email.' failed: '.$e->getMessage());
         }
     }
 }
