@@ -46,15 +46,25 @@ class TargetController extends Controller
             'period' => ['required', 'date_format:Y-m'],
             'user_ids' => ['required', 'array', 'min:1', 'max:200'],
             'user_ids.*' => ['integer'],
-            'product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('store_id', $storeId)],
-            'unit_id' => ['required', 'integer'],
-            'quantity' => ['required', 'integer', 'min:1', 'max:10000000'],
-            'reward_amount' => ['required', 'integer', 'min:0', 'max:100000000000'],
+            'all_products' => ['sometimes', 'boolean'],
+            'product_id' => ['required_unless:all_products,true', 'nullable', 'integer', Rule::exists('products', 'id')->where('store_id', $storeId)],
+            'unit_id' => ['required_unless:all_products,true', 'nullable', 'integer'],
+            'quantity' => ['required_unless:all_products,true', 'nullable', 'integer', 'min:1', 'max:10000000'],
+            'target_amount' => ['required_if:all_products,true', 'nullable', 'integer', 'min:1', 'max:100000000000000'], // kobo of sales
+            'reward_type' => ['required', 'in:flat,salary_percent,fixed_percent'],
+            'reward_amount' => ['required_if:reward_type,flat', 'nullable', 'integer', 'min:0', 'max:100000000000'],
+            'reward_percent' => ['required_unless:reward_type,flat', 'nullable', 'numeric', 'min:0.01', 'max:1000'],
+            'reward_base' => ['required_if:reward_type,fixed_percent', 'nullable', 'integer', 'min:1', 'max:100000000000'],
         ]);
 
-        $unit = ProductUnit::where('product_id', $data['product_id'])->where('unit_id', $data['unit_id'])->first();
-        if (! $unit) {
-            throw ValidationException::withMessages(['unit_id' => 'That product is not sold in this unit.']);
+        $all = (bool) ($data['all_products'] ?? false);
+        $unit = null;
+
+        if (! $all) {
+            $unit = ProductUnit::where('product_id', $data['product_id'])->where('unit_id', $data['unit_id'])->first();
+            if (! $unit) {
+                throw ValidationException::withMessages(['unit_id' => 'That product is not sold in this unit.']);
+            }
         }
 
         // Only real salespeople (accounts that have a van) can be given a target.
@@ -63,12 +73,29 @@ class TargetController extends Controller
             throw ValidationException::withMessages(['user_ids' => 'Targets can only be set for salespeople.']);
         }
 
-        DB::transaction(function () use ($storeId, $data, $unit) {
+        $type = $data['reward_type'];
+        $values = [
+            'unit_id' => $all ? null : $data['unit_id'],
+            'quantity' => $all ? 0 : $data['quantity'],
+            'factor' => $all ? 1 : $unit->factor,
+            'target_base' => $all ? $data['target_amount'] : $data['quantity'] * $unit->factor,
+            'reward_type' => $type,
+            'reward_amount' => $type === 'flat' ? (int) $data['reward_amount'] : 0,
+            'reward_percent' => $type === 'flat' ? 0 : $data['reward_percent'],
+            'reward_base' => $type === 'fixed_percent' ? (int) $data['reward_base'] : 0,
+            'updated_at' => now(),
+        ];
+
+        DB::transaction(function () use ($storeId, $data, $all, $values) {
             foreach (array_unique($data['user_ids']) as $uid) {
-                DB::table('sales_targets')->updateOrInsert(
-                    ['store_id' => $storeId, 'period' => $data['period'], 'user_id' => $uid, 'product_id' => $data['product_id']],
-                    ['unit_id' => $data['unit_id'], 'quantity' => $data['quantity'], 'factor' => $unit->factor, 'target_base' => $data['quantity'] * $unit->factor, 'reward_amount' => $data['reward_amount'], 'updated_at' => now(), 'created_at' => now()],
-                );
+                $where = DB::table('sales_targets')->where(['store_id' => $storeId, 'period' => $data['period'], 'user_id' => $uid]);
+                $all ? $where->whereNull('product_id') : $where->where('product_id', $data['product_id']);
+
+                if ($where->exists()) {
+                    $where->update($values);
+                } else {
+                    DB::table('sales_targets')->insert([...$values, 'store_id' => $storeId, 'period' => $data['period'], 'user_id' => $uid, 'product_id' => $all ? null : $data['product_id'], 'created_at' => now()]);
+                }
             }
         });
 
@@ -91,7 +118,8 @@ class TargetController extends Controller
 
         $copied = 0;
         foreach (DB::table('sales_targets')->where('store_id', $storeId)->where('period', $data['from'])->get() as $row) {
-            $exists = DB::table('sales_targets')->where(['store_id' => $storeId, 'period' => $data['to'], 'user_id' => $row->user_id, 'product_id' => $row->product_id])->exists();
+            $q = DB::table('sales_targets')->where(['store_id' => $storeId, 'period' => $data['to'], 'user_id' => $row->user_id]);
+            $exists = ($row->product_id === null ? $q->whereNull('product_id') : $q->where('product_id', $row->product_id))->exists();
 
             if (! $exists) {
                 DB::table('sales_targets')->insert([...(array) $row, 'id' => null, 'period' => $data['to'], 'created_at' => now(), 'updated_at' => now()]);

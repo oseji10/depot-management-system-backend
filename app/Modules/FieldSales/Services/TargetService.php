@@ -68,30 +68,85 @@ class TargetService
      */
     public function progress(int $storeId, string $period, ?int $userId = null): array
     {
-        $targets = DB::table('sales_targets as t')->join('products as p', 'p.id', '=', 't.product_id')->join('units as u', 'u.id', '=', 't.unit_id')->join('users as r', 'r.id', '=', 't.user_id')
+        $targets = DB::table('sales_targets as t')->leftJoin('products as p', 'p.id', '=', 't.product_id')->leftJoin('units as u', 'u.id', '=', 't.unit_id')->join('users as r', 'r.id', '=', 't.user_id')
             ->where('t.store_id', $storeId)->where('t.period', $period)->when($userId, fn ($q) => $q->where('t.user_id', $userId))
-            ->orderBy('r.name')->orderBy('p.name')
-            ->get(['t.id', 't.user_id', 'r.name as rep', 't.product_id', 'p.name as product', 'u.name as unit', 't.quantity', 't.factor', 't.target_base', 't.reward_amount']);
+            ->orderBy('r.name')->orderByRaw('p.name is not null')->orderBy('p.name')
+            ->get(['t.id', 't.user_id', 'r.name as rep', 't.product_id', 'p.name as product', 'u.name as unit', 't.quantity', 't.factor', 't.target_base', 't.reward_amount', 't.reward_type', 't.reward_percent', 't.reward_base']);
 
-        $achieved = $this->achieved($storeId, $period, $targets->pluck('user_id')->unique()->all());
+        $ids = $targets->pluck('user_id')->unique()->all();
+        $achieved = $this->achieved($storeId, $period, $ids);
+        $worth = $this->achievedValue($storeId, $period, $ids);
+        $salary = $this->salaries($storeId, $ids);
         $tiers = $this->tiers($storeId);
 
         $out = [];
 
         foreach ($targets->groupBy('user_id') as $uid => $rows) {
-            $lines = $rows->map(function ($t) use ($achieved, $tiers) {
-                $base = (int) ($achieved[$t->user_id][$t->product_id] ?? 0);
+            $lines = $rows->map(function ($t) use ($achieved, $worth, $salary, $tiers) {
+                $all = $t->product_id === null;
+                $base = $all ? (int) ($worth[$t->user_id] ?? 0) : (int) ($achieved[$t->user_id][$t->product_id] ?? 0);
                 $percent = $t->target_base > 0 ? round($base / $t->target_base * 100, 1) : 0.0;
                 $pays = $this->payoutPercent($percent, $tiers);
+                $full = $this->fullReward($t, $salary[$t->user_id] ?? 0);
 
                 return [
-                    'id' => $t->id, 'product_id' => $t->product_id, 'product' => $t->product, 'unit' => $t->unit, 'quantity' => (int) $t->quantity,
-                    'target_base' => (int) $t->target_base, 'achieved_base' => $base, 'achieved' => round($base / max(1, $t->factor), 1), 'percent' => $percent,
-                    'payout_percent' => $pays, 'reward_full' => (int) $t->reward_amount, 'reward' => (int) round($t->reward_amount * $pays / 100),
+                    'id' => $t->id, 'product_id' => $t->product_id, 'all_products' => $all, 'product' => $all ? 'All products (total sales)' : $t->product, 'unit' => $all ? 'naira' : $t->unit, 'quantity' => $all ? 0 : (int) $t->quantity,
+                    'target_base' => (int) $t->target_base, 'achieved_base' => $base, 'achieved' => $all ? $base : round($base / max(1, $t->factor), 1), 'percent' => $percent,
+                    'reward_type' => $t->reward_type, 'reward_percent' => (float) $t->reward_percent, 'reward_base' => (int) $t->reward_base, 'salary' => (int) ($salary[$t->user_id] ?? 0),
+                    'payout_percent' => $pays, 'reward_full' => $full, 'reward' => (int) round($full * $pays / 100),
                 ];
             })->values()->all();
 
             $out[] = ['user_id' => (int) $uid, 'name' => $rows->first()->rep, 'targets' => $lines, 'reward_total' => array_sum(array_column($lines, 'reward')), 'reward_full' => array_sum(array_column($lines, 'reward_full'))];
+        }
+
+        return $out;
+    }
+
+    /** The reward for reaching 100%: a flat amount, or a percentage of basic salary, or of a fixed amount. */
+    public function fullReward(object $t, int $salary): int
+    {
+        return match ($t->reward_type ?? 'flat') {
+            'salary_percent' => (int) round($salary * (float) $t->reward_percent / 100),
+            'fixed_percent' => (int) round((int) $t->reward_base * (float) $t->reward_percent / 100),
+            default => (int) $t->reward_amount,
+        };
+    }
+
+    /**
+     * Current basic salary (kobo) of each salesperson who is on the staff list.
+     *
+     * @param  list<int>  $userIds
+     * @return array<int, int>
+     */
+    public function salaries(int $storeId, array $userIds): array
+    {
+        return DB::table('employees')->where('store_id', $storeId)->whereIn('user_id', $userIds)->where('status', 'active')->pluck('basic_salary', 'user_id')->map(fn ($v) => (int) $v)->all();
+    }
+
+    /**
+     * Money each salesperson sold in the month (all products), less the value of what customers returned.
+     *
+     * @param  list<int>  $userIds
+     * @return array<int, int> [user] => kobo
+     */
+    public function achievedValue(int $storeId, string $period, array $userIds): array
+    {
+        if ($userIds === []) {
+            return [];
+        }
+
+        $from = Carbon::createFromFormat('Y-m-d', "{$period}-01")->startOfDay();
+        $to = (clone $from)->endOfMonth();
+
+        $out = DB::table('sales')->where('store_id', $storeId)->where('status', 'completed')->whereIn('created_by', $userIds)->whereBetween('sold_at', [$from, $to])
+            ->groupBy('created_by')->selectRaw('created_by as uid, SUM(total) as v')->pluck('v', 'uid')->map(fn ($v) => (int) $v)->all();
+
+        $back = DB::table('sale_returns as r')->join('sales as s', 's.id', '=', 'r.sale_id')->where('s.store_id', $storeId)->whereIn('s.created_by', $userIds)->whereBetween('r.returned_at', [$from, $to])
+            ->groupBy('s.created_by')->selectRaw('s.created_by as uid, SUM(r.total) as v')->pluck('v', 'uid');
+
+        foreach ($back as $uid => $v) {
+            $out[$uid] = max(0, ($out[$uid] ?? 0) - (int) $v);
         }
 
         return $out;

@@ -625,9 +625,9 @@ class FieldSalesTest extends TestCase
 
         Sanctum::actingAs($this->owner);
         // 30 bottles for a N10,000 reward.
-        $this->postJson('/api/v1/targets', ['period' => $period, 'user_ids' => [$rep->id], 'product_id' => $this->coke->id, 'unit_id' => $this->bottle, 'quantity' => 30, 'reward_amount' => 1_000_000])->assertCreated();
+        $this->postJson('/api/v1/targets', ['period' => $period, 'user_ids' => [$rep->id], 'product_id' => $this->coke->id, 'unit_id' => $this->bottle, 'quantity' => 30, 'reward_type' => 'flat', 'reward_amount' => 1_000_000])->assertCreated();
         // Someone who is not a salesperson cannot be given a target.
-        $this->postJson('/api/v1/targets', ['period' => $period, 'user_ids' => [$this->owner->id], 'product_id' => $this->coke->id, 'unit_id' => $this->bottle, 'quantity' => 30, 'reward_amount' => 1])->assertUnprocessable();
+        $this->postJson('/api/v1/targets', ['period' => $period, 'user_ids' => [$this->owner->id], 'product_id' => $this->coke->id, 'unit_id' => $this->bottle, 'quantity' => 30, 'reward_type' => 'flat', 'reward_amount' => 1])->assertUnprocessable();
 
         // 24 of 30 = 80%: the default rules pay half.
         $this->sellFromVan($rep, $van, 24, [['method' => 'cash', 'amount' => 1_440_000]])->assertCreated();
@@ -646,6 +646,17 @@ class FieldSalesTest extends TestCase
         $this->sellFromVan($rep, $van, 6, [['method' => 'cash', 'amount' => 360_000]])->assertCreated();
         Sanctum::actingAs($this->owner);
         $this->postJson("/api/v1/payroll-runs/{$run}/recalculate")->assertOk()->assertJsonPath('total_gross', 11_000_000);
+
+        // The reward can instead be a percentage of the person's salary or of a fixed amount, and a target can cover every product.
+        $this->postJson('/api/v1/targets', ['period' => $period, 'user_ids' => [$rep->id], 'product_id' => $this->coke->id, 'unit_id' => $this->bottle, 'quantity' => 30, 'reward_type' => 'salary_percent', 'reward_percent' => 5])->assertCreated();
+        $this->getJson("/api/v1/targets?period={$period}")->assertJsonPath('reps.0.targets.0.reward_full', 500_000);   // 5% of N100,000
+        $this->postJson('/api/v1/targets', ['period' => $period, 'user_ids' => [$rep->id], 'product_id' => $this->coke->id, 'unit_id' => $this->bottle, 'quantity' => 30, 'reward_type' => 'fixed_percent', 'reward_percent' => 10, 'reward_base' => 2_000_000])->assertCreated();
+        $this->getJson("/api/v1/targets?period={$period}")->assertJsonPath('reps.0.targets.0.reward_full', 200_000);
+        $this->postJson('/api/v1/targets', ['period' => $period, 'user_ids' => [$rep->id], 'all_products' => true, 'target_amount' => 1_000_000, 'reward_type' => 'flat', 'reward_amount' => 300_000])->assertCreated();
+        $all = collect($this->getJson("/api/v1/targets?period={$period}")->json('reps.0.targets'))->firstWhere('all_products', true);
+        $this->assertSame(1_800_000, $all['achieved_base']);   // 30 bottles sold, in kobo
+        $this->assertSame(100.0, (float) min(100, $all['percent']));
+        $this->postJson('/api/v1/targets', ['period' => $period, 'user_ids' => [$rep->id], 'reward_type' => 'flat', 'reward_amount' => 1])->assertUnprocessable();
 
         // Below the lowest level nothing is paid; the levels can be changed.
         $this->putJson('/api/v1/target-rules', ['tiers' => [['min' => 100, 'pays' => 100], ['min' => 90, 'pays' => 60]], 'pay_lag' => 0])->assertOk();
