@@ -31,6 +31,11 @@ class GoodsReceipt extends Model
         return $this->hasMany(GoodsReceiptLine::class);
     }
 
+    public function files(): HasMany
+    {
+        return $this->hasMany(GoodsReceiptFile::class)->orderBy('id');
+    }
+
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);

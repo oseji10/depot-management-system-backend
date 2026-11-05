@@ -27,6 +27,14 @@ class ContainerTypeController extends Controller
         return response()->json(ContainerType::create([...$request->validate($this->rules($storeId)), 'store_id' => $storeId]), 201);
     }
 
+    /** Deleting hides the container type (it can be restored). It is refused once anything has used it. */
+    public function destroy(int $id): JsonResponse
+    {
+        \App\Support\Deletion::remove(\App\Modules\Containers\Models\ContainerType::findOrFail($id), ['container_movements' => 'container_type_id'], 'This container type');
+
+        return response()->json(null, 204);
+    }
+
     public function update(Request $request, int $id): JsonResponse
     {
         $type = ContainerType::findOrFail($id);

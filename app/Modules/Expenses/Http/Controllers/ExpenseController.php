@@ -70,6 +70,17 @@ class ExpenseController extends Controller
         return response()->json($this->service->void($id, $data['reason'], $request->user())->load(self::WITH));
     }
 
+    /** A voided expense (already reversed in the books) can be removed from the list. */
+    public function destroy(int $id): JsonResponse
+    {
+        $expense = $this->visible()->findOrFail($id);
+        abort_unless($expense->status === 'void', 422, 'Void this expense first, with a reason. Only a voided expense can be deleted.');
+
+        $expense->delete();
+
+        return response()->json(null, 204);
+    }
+
     /** Salespeople see only what they logged themselves. */
     private function visible(): Builder
     {

@@ -29,6 +29,14 @@ class ExpenseCategoryController extends Controller
         );
     }
 
+    /** Deleting hides the expense category (it can be restored). It is refused once anything has used it. */
+    public function destroy(int $id): JsonResponse
+    {
+        \App\Support\Deletion::remove(\App\Modules\Expenses\Models\ExpenseCategory::findOrFail($id), ['expenses' => 'category_id'], 'This category');
+
+        return response()->json(null, 204);
+    }
+
     public function update(Request $request, int $id): JsonResponse
     {
         $category = ExpenseCategory::findOrFail($id);

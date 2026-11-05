@@ -149,13 +149,37 @@ class PurchaseOrderController extends Controller
         ]);
     }
 
-    /** Frozen at order time so later pack-size edits never rewrite history. */
+    /** A draft or cancelled order with nothing received can be deleted (it is hidden, not erased). */
+    public function destroy(int $id): JsonResponse
+    {
+        $po = PurchaseOrder::findOrFail($id);
+        abort_unless(in_array($po->status, ['draft', 'cancelled'], true), 422, 'Cancel this order first. Only a draft or cancelled order can be deleted.');
+
+        \App\Support\Deletion::remove($po, ['goods_receipts' => 'purchase_order_id'], 'This order');
+
+        return response()->json(null, 204);
+    }
+
+    /**
+     * Frozen at order time so later pack-size edits never rewrite history. A line with no cost takes today's price-list
+     * price for that product and unit.
+     */
     private function resolveLines(array $lines): array
     {
-        return collect($lines)->map(fn ($l, $i) => [
-            'product_id' => $l['product_id'], 'unit_id' => $l['unit_id'], 'quantity' => $l['quantity'], 'unit_cost' => $l['unit_cost'],
-            'factor' => UnitResolver::factor($l['product_id'], $l['unit_id'], $i),
-        ])->all();
+        $prices = null;
+
+        return collect($lines)->map(function ($l, $i) use (&$prices) {
+            $factor = UnitResolver::factor($l['product_id'], $l['unit_id'], $i);
+            $cost = $l['unit_cost'] ?? null;
+
+            if ($cost === null || $cost === '') {
+                $prices ??= app(\App\Modules\Catalogue\Services\PriceResolver::class)->effective()->keyBy('product_unit_id');
+                $pu = \App\Modules\Catalogue\Models\ProductUnit::where('product_id', $l['product_id'])->where('unit_id', $l['unit_id'])->value('id');
+                $cost = $pu && isset($prices[$pu]) ? $prices[$pu]['price'] : throw \Illuminate\Validation\ValidationException::withMessages(["lines.{$i}.unit_cost" => 'This product has no price in the price list for that unit. Enter a cost, or set the price first.']);
+            }
+
+            return ['product_id' => $l['product_id'], 'unit_id' => $l['unit_id'], 'quantity' => $l['quantity'], 'unit_cost' => $cost, 'factor' => $factor];
+        })->all();
     }
 
     private function rules(int $storeId): array
@@ -170,7 +194,7 @@ class PurchaseOrderController extends Controller
             'lines.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('store_id', $storeId)],
             'lines.*.unit_id' => ['required', 'integer'],
             'lines.*.quantity' => ['required', 'integer', 'min:1', 'max:1000000'],
-            'lines.*.unit_cost' => ['required', 'numeric', 'min:0', 'max:9999999999.99'],
+            'lines.*.unit_cost' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
         ];
     }
 }

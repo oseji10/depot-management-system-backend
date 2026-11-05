@@ -4,13 +4,17 @@ namespace App\Modules\Sales\Models;
 
 use App\Support\Auditing\Auditable;
 use App\Support\Tenancy\BelongsToStore;
+use App\Support\Concerns\SoftDeletesFreeingKeys;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 
 class Customer extends Model
 {
-    use Auditable, BelongsToStore;
+    use Auditable, BelongsToStore, SoftDeletesFreeingKeys;
+
+    /** Unique values released when the record is deleted, with their column lengths. */
+    protected array $freedOnDelete = ['phone' => 30];
 
     public const TYPES = ['retail', 'wholesale'];
     public const EMPTIES_MODES = ['deposit', 'balance', 'none'];

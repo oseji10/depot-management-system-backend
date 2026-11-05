@@ -4,12 +4,16 @@ namespace App\Modules\Fleet\Models;
 
 use App\Support\Auditing\Auditable;
 use App\Support\Tenancy\BelongsToStore;
+use App\Support\Concerns\SoftDeletesFreeingKeys;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class FuelStation extends Model
 {
-    use Auditable, BelongsToStore;
+    use Auditable, BelongsToStore, SoftDeletesFreeingKeys;
+
+    /** Unique values released when the record is deleted, with their column lengths. */
+    protected array $freedOnDelete = ['name' => 100];
 
     protected $fillable = ['store_id', 'name', 'location', 'phone', 'price_per_litre', 'is_active'];
 

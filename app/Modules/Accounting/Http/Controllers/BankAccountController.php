@@ -71,6 +71,21 @@ class BankAccountController extends Controller
         return response()->json($account);
     }
 
+    /** An account nothing has ever been booked to can be deleted. Otherwise switch it off. */
+    public function destroy(int $id): JsonResponse
+    {
+        $this->guardStoreLevel();
+        $account = Account::where('type', 'asset')->where(fn ($q) => $q->where('is_bank', true)->orWhere('role', 'bank'))->findOrFail($id);
+
+        abort_if($account->role === 'bank', 422, 'The main Bank account cannot be deleted.');
+
+        \App\Support\Deletion::remove($account, [
+            'journal_lines' => 'account_id', 'pos_terminals' => 'account_id', 'sale_payments' => 'account_id', 'bank_statements' => 'account_id',
+        ], 'This bank account');
+
+        return response()->json(null, 204);
+    }
+
     private function rules(): array
     {
         return [

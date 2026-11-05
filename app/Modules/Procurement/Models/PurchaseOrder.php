@@ -5,6 +5,7 @@ namespace App\Modules\Procurement\Models;
 use App\Models\User;
 use App\Modules\Organization\Models\Warehouse;
 use App\Support\Auditing\Auditable;
+use App\Support\Concerns\SoftDeletesFreeingKeys;
 use App\Support\Tenancy\BelongsToStore;
 use App\Support\Tenancy\BranchScoped;
 use Illuminate\Database\Eloquent\Model;
@@ -13,7 +14,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PurchaseOrder extends Model
 {
-    use Auditable, BelongsToStore, BranchScoped;
+    use Auditable, BelongsToStore, BranchScoped, SoftDeletesFreeingKeys;
+
+    protected array $freedOnDelete = ['number' => 20];
 
     protected $fillable = [
         'store_id', 'branch_id', 'warehouse_id', 'supplier_id', 'number', 'status',

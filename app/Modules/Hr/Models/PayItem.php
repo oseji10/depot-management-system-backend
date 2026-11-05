@@ -4,12 +4,16 @@ namespace App\Modules\Hr\Models;
 
 use App\Support\Auditing\Auditable;
 use App\Support\Tenancy\BelongsToStore;
+use App\Support\Concerns\SoftDeletesFreeingKeys;
 use Illuminate\Database\Eloquent\Model;
 
 /** An allowance or deduction the business defines, e.g. "Transport allowance" or "Pension 8%". */
 class PayItem extends Model
 {
-    use Auditable, BelongsToStore;
+    use Auditable, BelongsToStore, SoftDeletesFreeingKeys;
+
+    /** Unique values released when the record is deleted, with their column lengths. */
+    protected array $freedOnDelete = ['name' => 255];
 
     protected $guarded = [];
 

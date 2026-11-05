@@ -35,6 +35,14 @@ class SupplierController extends Controller
     }
 
     /** Suppliers are never deleted (receipts reference them). Disable them instead. */
+    /** Deleting hides the supplier (it can be restored). It is refused once anything has used it. */
+    public function destroy(int $id): JsonResponse
+    {
+        \App\Support\Deletion::remove(\App\Modules\Procurement\Models\Supplier::findOrFail($id), ['purchase_orders' => 'supplier_id', 'goods_receipts' => 'supplier_id'], 'This supplier');
+
+        return response()->json(null, 204);
+    }
+
     public function update(Request $request, int $id): JsonResponse
     {
         $supplier = Supplier::findOrFail($id);

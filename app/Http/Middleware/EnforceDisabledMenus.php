@@ -21,6 +21,7 @@ class EnforceDisabledMenus
         '/customers/insights' => ['customers/insights', 'customer-groups'],
         '/customers/aging' => ['customers/aging'],
         '/returns' => ['returns'],
+        '/proformas' => ['proformas'],
         '/field' => ['reps'],
         '/field/trips' => ['trips'],
         '/field/issues' => ['sync-issues'],

@@ -85,6 +85,14 @@ class VehicleController extends Controller
         return response()->json(Vehicle::create([...$data, 'branch_id' => $branchId, 'store_id' => $storeId]), 201);
     }
 
+    /** Deleting hides the vehicle (it can be restored). It is refused once anything has used it. */
+    public function destroy(int $id): JsonResponse
+    {
+        \App\Support\Deletion::remove(\App\Modules\Fleet\Models\Vehicle::findOrFail($id), ['trips' => 'vehicle_id', 'fuel_vouchers' => 'vehicle_id'], 'This vehicle');
+
+        return response()->json(null, 204);
+    }
+
     public function update(Request $request, int $id): JsonResponse
     {
         $v = Vehicle::findOrFail($id);

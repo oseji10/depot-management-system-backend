@@ -79,6 +79,14 @@ class CustomerController extends Controller
         return response()->json($customer, 201);
     }
 
+    /** Deleting hides the customer (it can be restored). It is refused once anything has used it. */
+    public function destroy(int $id): JsonResponse
+    {
+        \App\Support\Deletion::remove(\App\Modules\Sales\Models\Customer::findOrFail($id), ['sales' => 'customer_id', 'sale_returns' => 'customer_id'], 'This customer');
+
+        return response()->json(null, 204);
+    }
+
     /** Customers are never deleted (sales reference them). Disable them instead. */
     public function update(Request $request, int $id): JsonResponse
     {

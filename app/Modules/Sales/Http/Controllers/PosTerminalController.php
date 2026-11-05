@@ -47,6 +47,14 @@ class PosTerminalController extends Controller
         return response()->json(PosTerminal::create([...$request->validate($this->rules($storeId)), 'store_id' => $storeId])->load(self::WITH), 201);
     }
 
+    /** Deleting hides the POS terminal (it can be restored). It is refused once anything has used it. */
+    public function destroy(int $id): JsonResponse
+    {
+        \App\Support\Deletion::remove(\App\Modules\Sales\Models\PosTerminal::findOrFail($id), ['sale_payments' => 'pos_terminal_id', 'trips' => 'pos_terminal_id'], 'This POS terminal');
+
+        return response()->json(null, 204);
+    }
+
     public function update(Request $request, int $id): JsonResponse
     {
         $terminal = PosTerminal::findOrFail($id);

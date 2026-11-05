@@ -144,6 +144,7 @@ Route::prefix('v1')->group(function () {
         Route::get('rebate-categories', [RebateCategoryController::class, 'index'])->middleware('can:products.view');
         Route::post('rebate-categories', [RebateCategoryController::class, 'store'])->middleware('can:products.manage');
         Route::put('rebate-categories/{id}', [RebateCategoryController::class, 'update'])->middleware('can:products.manage');
+        Route::delete('rebate-categories/{id}', [RebateCategoryController::class, 'destroy'])->middleware('can:products.manage');
 
         Route::get('units', [UnitController::class, 'index'])->middleware('can:products.view');
         Route::post('units', [UnitController::class, 'store'])->middleware('can:products.manage');
@@ -205,11 +206,13 @@ Route::prefix('v1')->group(function () {
         Route::get('suppliers', [SupplierController::class, 'index'])->middleware('can:purchasing.view');
         Route::post('suppliers', [SupplierController::class, 'store'])->middleware('can:purchasing.manage');
         Route::put('suppliers/{id}', [SupplierController::class, 'update'])->middleware('can:purchasing.manage');
+        Route::delete('suppliers/{id}', [SupplierController::class, 'destroy'])->middleware('can:purchasing.manage');
 
         Route::get('purchase-orders', [PurchaseOrderController::class, 'index'])->middleware('can:purchasing.view');
         Route::post('purchase-orders', [PurchaseOrderController::class, 'store'])->middleware('can:purchasing.manage');
         Route::get('purchase-orders/{id}', [PurchaseOrderController::class, 'show'])->middleware('can:purchasing.view');
         Route::put('purchase-orders/{id}', [PurchaseOrderController::class, 'update'])->middleware('can:purchasing.manage');
+        Route::delete('purchase-orders/{id}', [PurchaseOrderController::class, 'destroy'])->middleware('can:purchasing.manage');
         Route::post('purchase-orders/{id}/issue', [PurchaseOrderController::class, 'issue'])->middleware('can:purchasing.manage');
         Route::post('purchase-orders/{id}/cancel', [PurchaseOrderController::class, 'cancel'])->middleware('can:purchasing.manage');
         Route::get('purchase-orders/{id}/receipt-template', [PurchaseOrderController::class, 'receiptTemplate'])->middleware('can:goods-receipts.record');
@@ -221,6 +224,9 @@ Route::prefix('v1')->group(function () {
         Route::get('goods-receipts/{id}', [GoodsReceiptController::class, 'show'])->middleware('can:goods-receipts.view');
         Route::put('goods-receipts/{id}', [GoodsReceiptController::class, 'update'])->middleware('can:goods-receipts.record');
         Route::delete('goods-receipts/{id}', [GoodsReceiptController::class, 'destroy'])->middleware('can:goods-receipts.record');
+        Route::post('goods-receipts/{id}/files', [GoodsReceiptController::class, 'uploadFile'])->middleware('can:goods-receipts.record');
+        Route::get('goods-receipts/{id}/files/{fileId}', [GoodsReceiptController::class, 'downloadFile'])->middleware('can:goods-receipts.view');
+        Route::delete('goods-receipts/{id}/files/{fileId}', [GoodsReceiptController::class, 'deleteFile'])->middleware('can:goods-receipts.record');
         Route::post('goods-receipts/{id}/post', [GoodsReceiptController::class, 'post'])->middleware('can:goods-receipts.post');
         Route::post('goods-receipts/{id}/reverse', [GoodsReceiptController::class, 'reverse'])->middleware('can:goods-receipts.reverse');
 
@@ -241,10 +247,19 @@ Route::prefix('v1')->group(function () {
         Route::delete('customer-groups/{id}', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'deleteGroup'])->middleware('can:customers.manage');
         Route::post('customer-groups/{id}/members', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'members'])->middleware('can:customers.manage');
         Route::put('customers/{id}/groups', [\App\Modules\Sales\Http\Controllers\CustomerInsightsController::class, 'setCustomerGroups'])->middleware('can:customers.manage');
+        Route::get('proformas/catalogue', [\App\Modules\Sales\Http\Controllers\ProformaController::class, 'catalogue'])->middleware('can:proformas.manage');
+        Route::get('proformas', [\App\Modules\Sales\Http\Controllers\ProformaController::class, 'index'])->middleware('can:proformas.view');
+        Route::post('proformas', [\App\Modules\Sales\Http\Controllers\ProformaController::class, 'store'])->middleware('can:proformas.manage');
+        Route::get('proformas/{id}', [\App\Modules\Sales\Http\Controllers\ProformaController::class, 'show'])->middleware('can:proformas.view');
+        Route::put('proformas/{id}', [\App\Modules\Sales\Http\Controllers\ProformaController::class, 'update'])->middleware('can:proformas.manage');
+        Route::post('proformas/{id}/status', [\App\Modules\Sales\Http\Controllers\ProformaController::class, 'setStatus'])->middleware('can:proformas.manage');
+        Route::post('proformas/{id}/convert', [\App\Modules\Sales\Http\Controllers\ProformaController::class, 'convert'])->middleware(['can:proformas.manage', 'can:sales.create']);
+        Route::delete('proformas/{id}', [\App\Modules\Sales\Http\Controllers\ProformaController::class, 'destroy'])->middleware('can:proformas.manage');
         Route::get('customers', [CustomerController::class, 'index'])->middleware('can:customers.view');
         Route::post('customers', [CustomerController::class, 'store'])->middleware('can:customers.manage');
         Route::get('customers/{id}', [CustomerController::class, 'show'])->middleware('can:customers.view');
         Route::put('customers/{id}', [CustomerController::class, 'update'])->middleware('can:customers.manage');
+        Route::delete('customers/{id}', [CustomerController::class, 'destroy'])->middleware('can:customers.manage');
 
         Route::get('sales/summary', [SaleController::class, 'summary'])->middleware('can:sales.view');
         Route::get('sales', [SaleController::class, 'index'])->middleware('can:sales.view');
@@ -295,6 +310,7 @@ Route::prefix('v1')->group(function () {
         Route::get('vehicles/{id}', [VehicleController::class, 'show'])->middleware('can:vehicles.view');
         Route::post('vehicles', [VehicleController::class, 'store'])->middleware('can:vehicles.manage');
         Route::put('vehicles/{id}', [VehicleController::class, 'update'])->middleware('can:vehicles.manage');
+        Route::delete('vehicles/{id}', [VehicleController::class, 'destroy'])->middleware('can:vehicles.manage');
         Route::post('vehicles/{id}/documents', [VehicleController::class, 'addDocument'])->middleware('can:vehicles.manage');
         Route::put('vehicle-documents/{id}', [VehicleController::class, 'updateDocument'])->middleware('can:vehicles.manage');
         Route::delete('vehicle-documents/{id}', [VehicleController::class, 'deleteDocument'])->middleware('can:vehicles.manage');
@@ -304,6 +320,7 @@ Route::prefix('v1')->group(function () {
         Route::get('fuel-stations', [FuelController::class, 'stations'])->middleware('can:fuel.view');
         Route::post('fuel-stations', [FuelController::class, 'storeStation'])->middleware('can:fuel.manage');
         Route::put('fuel-stations/{id}', [FuelController::class, 'updateStation'])->middleware('can:fuel.manage');
+        Route::delete('fuel-stations/{id}', [FuelController::class, 'destroyStation'])->middleware('can:fuel.manage');
         Route::post('fuel-stations/{id}/top-up', [FuelController::class, 'topUp'])->middleware('can:fuel.manage');
         Route::get('fuel-stations/{id}/entries', [FuelController::class, 'entries'])->middleware('can:fuel.view');
         Route::get('fuel-vouchers', [FuelController::class, 'vouchers'])->middleware('can:fuel.view');
@@ -343,12 +360,14 @@ Route::prefix('v1')->group(function () {
         Route::post('pos-terminals', [PosTerminalController::class, 'store'])->middleware('can:terminals.manage');
         Route::get('pos-terminals/{id}', [PosTerminalController::class, 'show'])->middleware('can:terminals.view');
         Route::put('pos-terminals/{id}', [PosTerminalController::class, 'update'])->middleware('can:terminals.manage');
+        Route::delete('pos-terminals/{id}', [PosTerminalController::class, 'destroy'])->middleware('can:terminals.manage');
         Route::get('pos-terminals/{id}/transactions', [PosTerminalController::class, 'transactions'])->middleware('can:terminals.view');
 
         // Returnable containers
         Route::get('container-types', [ContainerTypeController::class, 'index'])->middleware('can:products.view');
         Route::post('container-types', [ContainerTypeController::class, 'store'])->middleware('can:containers.manage');
         Route::put('container-types/{id}', [ContainerTypeController::class, 'update'])->middleware('can:containers.manage');
+        Route::delete('container-types/{id}', [ContainerTypeController::class, 'destroy'])->middleware('can:containers.manage');
         Route::get('containers/summary', [ContainerController::class, 'summary'])->middleware('can:containers.view');
         Route::get('containers/holdings', [ContainerController::class, 'holdings'])->middleware('can:containers.view');
         Route::get('containers/movements', [ContainerController::class, 'movements'])->middleware('can:containers.view');
@@ -361,14 +380,17 @@ Route::prefix('v1')->group(function () {
         Route::get('expense-categories', [ExpenseCategoryController::class, 'index'])->middleware('can:expenses.create');
         Route::post('expense-categories', [ExpenseCategoryController::class, 'store'])->middleware('can:expenses.manage');
         Route::put('expense-categories/{id}', [ExpenseCategoryController::class, 'update'])->middleware('can:expenses.manage');
+        Route::delete('expense-categories/{id}', [ExpenseCategoryController::class, 'destroy'])->middleware('can:expenses.manage');
         Route::get('expenses', [ExpenseController::class, 'index'])->middleware('can:expenses.view');
         Route::post('expenses', [ExpenseController::class, 'store'])->middleware('can:expenses.create');
+        Route::delete('expenses/{id}', [ExpenseController::class, 'destroy'])->middleware('can:expenses.manage');
         Route::post('expenses/{id}/void', [ExpenseController::class, 'void'])->middleware('can:expenses.manage');
 
         // Accounting (store-level users only; enforced in the controllers)
         Route::get('bank-accounts', [BankAccountController::class, 'index'])->middleware('can:accounts.view');
         Route::post('bank-accounts', [BankAccountController::class, 'store'])->middleware('can:accounts.manage');
         Route::put('bank-accounts/{id}', [BankAccountController::class, 'update'])->middleware('can:accounts.manage');
+        Route::delete('bank-accounts/{id}', [BankAccountController::class, 'destroy'])->middleware('can:accounts.manage');
         Route::get('accounts', [AccountController::class, 'index'])->middleware('can:accounts.view');
         Route::post('accounts', [AccountController::class, 'store'])->middleware('can:accounts.manage');
         Route::put('accounts/{id}', [AccountController::class, 'update'])->middleware('can:accounts.manage');

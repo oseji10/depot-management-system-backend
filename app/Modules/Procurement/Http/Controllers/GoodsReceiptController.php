@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Inventory\Services\DocumentNumber;
 use App\Modules\Organization\Models\Warehouse;
 use App\Modules\Procurement\Models\GoodsReceipt;
+use App\Modules\Procurement\Models\GoodsReceiptFile;
 use App\Modules\Procurement\Models\GoodsReceiptLine;
 use App\Modules\Procurement\Models\PurchaseOrder;
 use App\Modules\Procurement\Services\GoodsReceiptService;
@@ -15,6 +16,8 @@ use App\Support\Tenancy\AccessScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -48,7 +51,7 @@ class GoodsReceiptController extends Controller
     {
         return response()->json(GoodsReceipt::with([
             ...self::WITH,
-            'lines.product:id,name,sku,base_unit_id,tracks_expiry', 'lines.product.baseUnit:id,name', 'lines.product.units.unit:id,name', 'lines.unit:id,name',
+            'lines.product:id,name,sku,base_unit_id,tracks_expiry', 'lines.product.baseUnit:id,name', 'lines.product.units.unit:id,name', 'lines.unit:id,name', 'files',
         ])->findOrFail($id));
     }
 
@@ -106,6 +109,42 @@ class GoodsReceiptController extends Controller
         abort_unless($receipt->status === 'draft', 422, 'Only a draft receipt can be deleted.');
 
         $receipt->delete();
+
+        return response()->json(null, 204);
+    }
+
+    /** Attach the manufacturer's invoice / receipt (photo or PDF). Allowed at any stage: the paper often arrives after the goods. */
+    public function uploadFile(Request $request, int $id): JsonResponse
+    {
+        $receipt = GoodsReceipt::findOrFail($id);
+        $request->validate(['file' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:8192']], ['file.max' => 'That file is too large. Use one under 8 MB.', 'file.mimes' => 'Upload a photo (JPG, PNG, WebP) or a PDF.']);
+        abort_if($receipt->files()->count() >= 10, 422, 'You can attach up to 10 files to one receipt.');
+
+        $file = $request->file('file');
+        $path = Storage::disk('local')->putFileAs("goods-receipts/{$receipt->store_id}", $file, Str::uuid().'.'.($file->guessExtension() ?: $file->getClientOriginalExtension()));
+
+        $row = GoodsReceiptFile::create([
+            'store_id' => $receipt->store_id, 'goods_receipt_id' => $receipt->id, 'path' => $path,
+            'original_name' => Str::limit($file->getClientOriginalName(), 140, ''), 'mime' => (string) $file->getMimeType(), 'size' => (int) $file->getSize(),
+            'uploaded_by' => $request->user()->id,
+        ]);
+
+        return response()->json($row, 201);
+    }
+
+    public function downloadFile(int $id, int $fileId)
+    {
+        $file = GoodsReceiptFile::where('goods_receipt_id', GoodsReceipt::findOrFail($id)->id)->findOrFail($fileId);
+        abort_unless(Storage::disk('local')->exists($file->path), 404);
+
+        return Storage::disk('local')->response($file->path, $file->original_name, ['Content-Type' => $file->mime, 'Cache-Control' => 'private, max-age=3600']);
+    }
+
+    public function deleteFile(int $id, int $fileId): JsonResponse
+    {
+        $file = GoodsReceiptFile::where('goods_receipt_id', GoodsReceipt::findOrFail($id)->id)->findOrFail($fileId);
+        Storage::disk('local')->delete($file->path);
+        $file->delete();
 
         return response()->json(null, 204);
     }

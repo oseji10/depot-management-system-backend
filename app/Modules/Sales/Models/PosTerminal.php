@@ -8,13 +8,17 @@ use App\Modules\Organization\Models\Branch;
 use App\Support\Auditing\Auditable;
 use App\Support\Tenancy\BelongsToStore;
 use Illuminate\Database\Eloquent\Builder;
+use App\Support\Concerns\SoftDeletesFreeingKeys;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** A card machine. Card payments are tied to the one that took them, so its takings can be matched to the provider's settlement. */
 class PosTerminal extends Model
 {
-    use Auditable, BelongsToStore;
+    use Auditable, BelongsToStore, SoftDeletesFreeingKeys;
+
+    /** Unique values released when the record is deleted, with their column lengths. */
+    protected array $freedOnDelete = ['name' => 80];
 
     protected $fillable = [
         'store_id', 'branch_id', 'assigned_user_id', 'account_id', 'name', 'provider', 'terminal_id', 'merchant_id', 'serial_number', 'notes', 'is_active',

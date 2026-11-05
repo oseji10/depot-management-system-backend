@@ -5,6 +5,7 @@ namespace App\Modules\Expenses\Models;
 use App\Models\User;
 use App\Modules\FieldSales\Models\Trip;
 use App\Support\Auditing\Auditable;
+use App\Support\Concerns\SoftDeletesFreeingKeys;
 use App\Support\Tenancy\BelongsToStore;
 use App\Support\Tenancy\BranchScoped;
 use Illuminate\Database\Eloquent\Model;
@@ -13,7 +14,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** Money the depot spent. Posts to the books the moment it is saved; a mistake is voided, never edited. */
 class Expense extends Model
 {
-    use Auditable, BelongsToStore, BranchScoped;
+    use Auditable, BelongsToStore, BranchScoped, SoftDeletesFreeingKeys;
+
+    protected array $freedOnDelete = ['number' => 20, 'client_ref' => 64];
 
     public const METHODS = ['cash', 'bank', 'imprest'];
 

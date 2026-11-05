@@ -41,6 +41,14 @@ class RebateCategoryController extends Controller
     }
 
     /** The code is what rebate rules will reference, so only the label, order and status can change. */
+    /** Deleting hides the rebate category (it can be restored). It is refused once anything has used it. */
+    public function destroy(int $id): JsonResponse
+    {
+        \App\Support\Deletion::remove(\App\Modules\Catalogue\Models\RebateCategory::findOrFail($id), ['products' => 'rebate_category_id', 'rebate_tiers' => 'rebate_category_id', 'rebate_calculation_lines' => 'rebate_category_id', 'rebate_calculation_sources' => 'rebate_category_id'], 'This rebate category');
+
+        return response()->json(null, 204);
+    }
+
     public function update(Request $request, int $id): JsonResponse
     {
         $category = RebateCategory::findOrFail($id);

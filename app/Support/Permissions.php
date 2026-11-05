@@ -32,6 +32,7 @@ class Permissions
             'sales.view', 'sales.create', 'sales.discount', 'sales.refund', 'sales.import',
             'terminals.view', 'terminals.manage',
             'customers.view', 'customers.manage',
+            'proformas.view', 'proformas.manage',
         ],
         'Field sales' => [
             'trips.view', 'trips.manage', 'targets.view', 'targets.manage',
@@ -70,7 +71,7 @@ class Permissions
             'Depot Manager' => array_values(array_diff($all, ['roles.manage', 'business.manage'])),
             'Accountant' => [
                 'branches.view', 'rebates.calculate', 'rebates.approve', 'rebates.settle', 'accounts.view', 'accounts.manage', 'journals.create', 'journals.post', 'journals.reverse', 'periods.close', 'expenses.view', 'expenses.create', 'expenses.manage',
-                'expenses.approve', 'reports.view', 'rebates.view', 'customers.view', 'customers.manage', 'sales.view', 'sales.create', 'sales.refund', 'employees.view', 'payroll.view', 'payroll.manage', 'payroll.approve', 'payroll.pay', 'staff-charges.view', 'staff-charges.manage', 'staff-charges.approve', 'terminals.view', 'terminals.manage',
+                'expenses.approve', 'reports.view', 'rebates.view', 'customers.view', 'customers.manage', 'sales.view', 'sales.create', 'sales.refund', 'proformas.view', 'employees.view', 'payroll.view', 'payroll.manage', 'payroll.approve', 'payroll.pay', 'staff-charges.view', 'staff-charges.manage', 'staff-charges.approve', 'terminals.view', 'terminals.manage',
                 'products.view', 'pricing.view', 'inventory.view', 'purchasing.view', 'goods-receipts.view', 'trips.view', 'containers.view', 'targets.view',
                 'imprest.view', 'imprest.manage', 'fuel.view', 'fuel.manage', 'vehicles.view',
             ],
@@ -81,10 +82,10 @@ class Permissions
                 'trips.view', 'trips.manage',
             ],
             'Sales Cashier' => [
-                'branches.view', 'warehouses.view', 'products.view', 'inventory.view', 'customers.view', 'customers.manage', 'sales.view', 'sales.create', 'containers.view', 'containers.manage',
+                'branches.view', 'warehouses.view', 'products.view', 'inventory.view', 'customers.view', 'customers.manage', 'sales.view', 'sales.create', 'containers.view', 'containers.manage', 'proformas.view', 'proformas.manage',
             ],
             // Salespersons and drivers. They can only sell from their own van, and only see their own sales.
-            'Field Sales' => ['products.view', 'customers.view', 'customers.manage', 'sales.view', 'sales.create', 'expenses.view', 'expenses.create'],
+            'Field Sales' => ['products.view', 'customers.view', 'customers.manage', 'sales.view', 'sales.create', 'expenses.view', 'expenses.create', 'proformas.view', 'proformas.manage'],
             'Warehouse Officer' => [
                 'warehouses.view', 'products.view', 'inventory.view', 'inventory.transfer', 'inventory.count', 'containers.view', 'containers.manage',
                 'purchasing.view', 'goods-receipts.view', 'goods-receipts.record', 'trips.view', 'trips.manage',
