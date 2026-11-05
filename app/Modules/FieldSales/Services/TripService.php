@@ -66,6 +66,50 @@ class TripService
         });
     }
 
+    /**
+     * Gives a card machine to a salesperson for good (until it is taken back): their card and POS-transfer payments go on it
+     * whether or not they have stock out. Null takes their machine back.
+     */
+    public function assignTerminal(User $rep, ?int $terminalId): void
+    {
+        DB::transaction(function () use ($rep, $terminalId) {
+            $van = Warehouse::vanOf($rep->id) ?? throw ValidationException::withMessages(['pos_terminal_id' => 'That user is not a salesperson.']);
+            $current = PosTerminal::where('assigned_user_id', $rep->id)->where('keep_with_rep', true)->first();
+
+            if (($current?->id) === $terminalId) {
+                return;
+            }
+
+            if ($this->openTripFor($rep)) {
+                throw ValidationException::withMessages(['pos_terminal_id' => 'This salesperson has stock out. Check them in before changing their card terminal.']);
+            }
+
+            $current?->update(['assigned_user_id' => null, 'keep_with_rep' => false]);
+
+            if ($terminalId === null) {
+                return;
+            }
+
+            $terminal = PosTerminal::lockForUpdate()->find($terminalId) ?? throw ValidationException::withMessages(['pos_terminal_id' => 'That card terminal was not found.']);
+
+            if (! $terminal->is_active) {
+                throw ValidationException::withMessages(['pos_terminal_id' => "{$terminal->name} is switched off."]);
+            }
+
+            if ($terminal->branch_id && $terminal->branch_id !== $van->branch_id) {
+                throw ValidationException::withMessages(['pos_terminal_id' => "{$terminal->name} belongs to another branch."]);
+            }
+
+            if ($terminal->assigned_user_id && $terminal->assigned_user_id !== $rep->id) {
+                $holder = User::withoutGlobalScopes()->whereKey($terminal->assigned_user_id)->value('name');
+
+                throw ValidationException::withMessages(['pos_terminal_id' => "{$terminal->name} is already with {$holder}."]);
+            }
+
+            $terminal->update(['assigned_user_id' => $rep->id, 'keep_with_rep' => true]);
+        });
+    }
+
     public function openTripFor(User|int $user): ?Trip
     {
         $id = $user instanceof User ? $user->id : $user;
@@ -121,8 +165,15 @@ class TripService
                 $trip->update(['vehicle_id' => $vehicleId]);
             }
 
-            if ($terminalId) {
-                $this->handTerminal($trip, $rep, $van, $terminalId);
+            // A machine given to the salesperson permanently goes out with every trip.
+            $kept = PosTerminal::where('assigned_user_id', $rep->id)->where('keep_with_rep', true)->value('id');
+
+            if ($terminalId && $kept && $terminalId !== $kept) {
+                throw ValidationException::withMessages(['pos_terminal_id' => 'This salesperson already has a card terminal assigned to them. Change it on their profile first.']);
+            }
+
+            if ($terminalId ?: $kept) {
+                $this->handTerminal($trip, $rep, $van, $terminalId ?: $kept);
             }
 
             $load = TripLoad::create([
@@ -355,7 +406,7 @@ class TripService
             throw ValidationException::withMessages(['pos_terminal_id' => "{$terminal->name} is already with {$holder}."]);
         }
 
-        PosTerminal::where('assigned_user_id', $rep->id)->where('id', '!=', $terminal->id)->update(['assigned_user_id' => null]);
+        PosTerminal::where('assigned_user_id', $rep->id)->where('keep_with_rep', false)->where('id', '!=', $terminal->id)->update(['assigned_user_id' => null]);
         $terminal->update(['assigned_user_id' => $rep->id]);
         $trip->update(['pos_terminal_id' => $terminal->id]);
     }
@@ -364,7 +415,7 @@ class TripService
     private function releaseTerminal(Trip $trip): void
     {
         if ($trip->pos_terminal_id) {
-            PosTerminal::withoutGlobalScopes()->whereKey($trip->pos_terminal_id)->where('assigned_user_id', $trip->rep_id)->update(['assigned_user_id' => null]);
+            PosTerminal::withoutGlobalScopes()->whereKey($trip->pos_terminal_id)->where('assigned_user_id', $trip->rep_id)->where('keep_with_rep', false)->update(['assigned_user_id' => null]);
         }
     }
 

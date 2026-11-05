@@ -69,8 +69,8 @@ class TripController extends Controller
 
         $rows = \App\Modules\Sales\Models\PosTerminal::query()->where('is_active', true)
             ->where(fn ($q) => $q->whereNull('assigned_user_id')->when($rep, fn ($w) => $w->orWhere('assigned_user_id', $rep)))
-            ->orderBy('name')->get(['id', 'name', 'provider', 'branch_id', 'assigned_user_id'])
-            ->map(fn ($t) => [...$t->only(['id', 'name', 'provider', 'branch_id']), 'with_rep' => $rep && $t->assigned_user_id === $rep]);
+            ->orderBy('name')->get(['id', 'name', 'provider', 'branch_id', 'assigned_user_id', 'keep_with_rep'])
+            ->map(fn ($t) => [...$t->only(['id', 'name', 'provider', 'branch_id']), 'with_rep' => $rep && $t->assigned_user_id === $rep, 'kept' => (bool) $t->keep_with_rep]);
 
         return response()->json(['data' => $rows]);
     }

@@ -44,7 +44,9 @@ class PosTerminalController extends Controller
     {
         $storeId = $this->access->requireStoreId();
 
-        return response()->json(PosTerminal::create([...$request->validate($this->rules($storeId)), 'store_id' => $storeId])->load(self::WITH), 201);
+        $data = $request->validate($this->rules($storeId));
+
+        return response()->json(PosTerminal::create([...$data, 'keep_with_rep' => ! empty($data['assigned_user_id']), 'store_id' => $storeId])->load(self::WITH), 201);
     }
 
     /** Deleting hides the POS terminal (it can be restored). It is refused once anything has used it. */
@@ -58,7 +60,8 @@ class PosTerminalController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $terminal = PosTerminal::findOrFail($id);
-        $terminal->update($request->validate($this->rules($terminal->store_id, $terminal)));
+        $data = $request->validate($this->rules($terminal->store_id, $terminal));
+        $terminal->update([...$data, 'keep_with_rep' => ! empty($data['assigned_user_id'])]);
 
         return response()->json($terminal->load(self::WITH));
     }

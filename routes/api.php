@@ -331,6 +331,7 @@ Route::prefix('v1')->group(function () {
         Route::get('reps', [RepController::class, 'index'])->middleware('can:trips.view');
         Route::post('reps', [RepController::class, 'store'])->middleware(['can:trips.manage', 'can:users.create']);
         Route::put('reps/{id}', [RepController::class, 'update'])->middleware('can:trips.manage');
+        Route::delete('reps/{id}', [RepController::class, 'destroy'])->middleware('can:trips.manage');
         Route::get('trips', [TripController::class, 'index'])->middleware('can:trips.view');
         Route::get('trips/terminals', [TripController::class, 'terminals'])->middleware('can:trips.manage');
         Route::post('trips/issue', [TripController::class, 'issue'])->middleware('can:trips.manage');

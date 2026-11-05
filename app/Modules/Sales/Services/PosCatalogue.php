@@ -97,7 +97,7 @@ class PosCatalogue
             'containers' => ContainerType::where('is_active', true)->orderBy('name')->get(['id', 'name', 'kind', 'deposit']),
             'products' => $rows,
             'unpriced' => $unpriced,
-            'mix_layouts' => \App\Modules\Sales\Models\MixLayout::where('is_active', true)->orderBy('row_size')->orderBy('row_count')->get(['id', 'name', 'row_count', 'row_size']),
+            'mix_layouts' => ! config('depot.mixed_crates') ? [] : \App\Modules\Sales\Models\MixLayout::where('is_active', true)->orderBy('row_size')->orderBy('row_count')->get(['id', 'name', 'row_count', 'row_size']),
         ];
     }
 }

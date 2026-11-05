@@ -41,14 +41,20 @@ class RepController extends Controller
         $today = Sale::where('status', 'completed')->whereIn('created_by', $users->keys())->where('sold_at', '>=', now()->startOfDay())
             ->groupBy('created_by')->selectRaw('created_by, SUM(total) AS total, COUNT(*) AS orders')->get()->keyBy('created_by');
 
-        $rows = $vans->filter(fn ($v) => $users->has($v->assigned_user_id))->map(function (Warehouse $v) use ($users, $staff, $open, $onVan, $today, $routes) {
+        $kept = \App\Modules\Sales\Models\PosTerminal::where('keep_with_rep', true)->whereIn('assigned_user_id', $users->keys())->get(['id', 'name', 'assigned_user_id'])->keyBy('assigned_user_id');
+        $used = collect(['sales' => 'created_by', 'trips' => 'rep_id', 'trip_loads' => 'user_id', 'expenses' => 'created_by'])
+            ->flatMap(fn ($col, $table) => \Illuminate\Support\Facades\DB::table($table)->whereIn($col, $users->keys())->distinct()->pluck($col))->flip();
+
+        $rows = $vans->filter(fn ($v) => $users->has($v->assigned_user_id))->map(function (Warehouse $v) use ($users, $staff, $open, $onVan, $today, $routes, $kept, $used) {
             $u = $users[$v->assigned_user_id];
             $trip = $open[$u->id] ?? null;
 
             return [
                 'id' => $u->id, 'name' => $u->name, 'email' => $u->email, 'phone' => $u->phone, 'is_active' => (bool) $u->is_active,
                 'employee' => isset($staff[$u->id]) ? ['id' => $staff[$u->id]->id, 'staff_no' => $staff[$u->id]->staff_no, 'status' => $staff[$u->id]->status] : null,
-                'branch' => $v->branch, 'van' => ['id' => $v->id, 'name' => $v->name],
+                'branch' => $v->branch, 'van' => ['id' => $v->id, 'name' => $v->name], 'branch_id' => $v->branch_id,
+                'terminal' => isset($kept[$u->id]) ? ['id' => $kept[$u->id]->id, 'name' => $kept[$u->id]->name] : null,
+                'can_delete' => ! isset($used[$u->id]),
                 'open_trip' => $trip ? ['id' => $trip->id, 'number' => $trip->number, 'opened_at' => $trip->opened_at, 'device_pending' => (int) $trip->device_pending, 'device_seen_at' => $trip->device_seen_at] : null,
                 'routes' => ($routes[$u->id] ?? collect())->map(fn ($r) => ['id' => $r->id, 'name' => $r->name])->values(),
                 'units_on_van' => (int) ($onVan[$v->id] ?? 0),
@@ -71,12 +77,22 @@ class RepController extends Controller
             'branch_id' => ['required', 'integer'],
             'route_ids' => ['sometimes', 'array'],
             'route_ids.*' => ['integer'],
+            'pos_terminal_id' => ['nullable', 'integer'],
         ]);
         $routeIds = $data['route_ids'] ?? [];
-        unset($data['route_ids']);
+        $terminalId = $data['pos_terminal_id'] ?? null;
+        unset($data['route_ids'], $data['pos_terminal_id']);
 
-        $user = $this->trips->createRep($data, $storeId);
-        RepRoutes::assign($user->id, $routeIds);
+        $user = \Illuminate\Support\Facades\DB::transaction(function () use ($data, $storeId, $routeIds, $terminalId) {
+            $user = $this->trips->createRep($data, $storeId);
+            RepRoutes::assign($user->id, $routeIds);
+
+            if ($terminalId) {
+                $this->trips->assignTerminal($user, $terminalId);
+            }
+
+            return $user;
+        });
 
         return response()->json($user->only(['id', 'name', 'email', 'phone']), 201);
     }
@@ -88,12 +104,27 @@ class RepController extends Controller
 
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:120'],
+            'email' => ['sometimes', 'email', 'max:150', \Illuminate\Validation\Rule::unique('users', 'email')->ignore($user->id)],
             'phone' => ['nullable', 'string', 'max:30'],
             'password' => ['nullable', Password::min(8)],
             'is_active' => ['sometimes', 'boolean'],
             'route_ids' => ['sometimes', 'array'],
             'route_ids.*' => ['integer'],
+            'branch_id' => ['sometimes', 'integer'],
+            'pos_terminal_id' => ['nullable', 'integer'],
         ]);
+
+        if (array_key_exists('pos_terminal_id', $data)) {
+            $this->trips->assignTerminal($user, $data['pos_terminal_id'] ?: null);
+            unset($data['pos_terminal_id']);
+        }
+
+        if (array_key_exists('branch_id', $data)) {
+            $van = Warehouse::vanOf($user->id);
+            abort_if($van->branch_id !== (int) $data['branch_id'] && ($this->trips->openTripFor($user) || \App\Modules\Inventory\Models\StockBalance::where('warehouse_id', $van->id)->where('quantity', '>', 0)->exists()), 422, 'This salesperson still has stock out. Check them in before moving them to another branch.');
+            \App\Modules\Organization\Models\Branch::findOrFail($data['branch_id']);
+            $van->update(['branch_id' => $data['branch_id']]);
+        }
 
         if (array_key_exists('route_ids', $data)) {
             RepRoutes::assign($user->id, $data['route_ids']);
@@ -117,5 +148,35 @@ class RepController extends Controller
         }
 
         return response()->json($user->fresh()->only(['id', 'name', 'email', 'phone', 'is_active']));
+    }
+
+    /** Only a salesperson who has never sold, taken stock, or logged an expense can be deleted. Anyone else is disabled instead. */
+    public function destroy(int $id): JsonResponse
+    {
+        $user = User::query()->visibleToActor()->findOrFail($id);
+        $van = Warehouse::vanOf($user->id);
+        abort_unless($van, 404);
+
+        foreach (['sales' => 'created_by', 'trips' => 'rep_id', 'trip_loads' => 'user_id', 'expenses' => 'created_by'] as $table => $column) {
+            abort_if(\Illuminate\Support\Facades\DB::table($table)->where($column, $user->id)->exists(), 422, 'This salesperson already has sales or trip history, so they cannot be deleted. Disable their account instead.');
+        }
+
+        abort_if(StockBalance::where('warehouse_id', $van->id)->where('quantity', '<>', 0)->exists(), 422, 'There is stock on this salesperson\'s van. Check it in first.');
+
+        try {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($user, $van) {
+                \App\Modules\Sales\Models\PosTerminal::where('assigned_user_id', $user->id)->update(['assigned_user_id' => null, 'keep_with_rep' => false]);
+                RepRoutes::assign($user->id, []);
+                \App\Modules\Hr\Models\Employee::withoutGlobalScopes()->where('user_id', $user->id)->update(['user_id' => null]);
+                $user->tokens()->delete();
+                $user->syncRoles([]);
+                $van->forceDelete();
+                $user->delete();
+            });
+        } catch (\Illuminate\Database\QueryException) {
+            abort(422, 'This salesperson is referenced by other records, so they cannot be deleted. Disable their account instead.');
+        }
+
+        return response()->json(null, 204);
     }
 }

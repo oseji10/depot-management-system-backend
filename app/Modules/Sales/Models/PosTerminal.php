@@ -21,12 +21,12 @@ class PosTerminal extends Model
     protected array $freedOnDelete = ['name' => 80];
 
     protected $fillable = [
-        'store_id', 'branch_id', 'assigned_user_id', 'account_id', 'name', 'provider', 'terminal_id', 'merchant_id', 'serial_number', 'notes', 'is_active',
+        'store_id', 'branch_id', 'assigned_user_id', 'account_id', 'name', 'provider', 'terminal_id', 'merchant_id', 'serial_number', 'notes', 'is_active', 'keep_with_rep',
     ];
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean'];
+        return ['is_active' => 'boolean', 'keep_with_rep' => 'boolean'];
     }
 
     public function branch(): BelongsTo
