@@ -49,6 +49,7 @@ class EnforceDisabledMenus
         '/bank-reconciliation' => ['bank-statements'],
         '/fiscal-periods' => ['fiscal-periods'],
         '/reports' => ['reports'],
+        '/analytics' => ['analytics'],
     ];
 
     /** Paths inside a blocked prefix that other screens still need (the till lists card machines). */

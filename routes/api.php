@@ -80,6 +80,7 @@ Route::prefix('v1')->group(function () {
         Route::put('notifications/email', [\App\Modules\Organization\Http\Controllers\NotificationController::class, 'saveEmailSettings']);
         Route::post('notifications/read', [\App\Modules\Organization\Http\Controllers\NotificationController::class, 'read']);
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);
+        Route::get('analytics', [\App\Modules\Sales\Http\Controllers\AnalyticsController::class, 'show'])->middleware('can:reports.view');
 
         Route::get('businesses', [\App\Modules\Organization\Http\Controllers\BusinessSwitchController::class, 'index']);
         Route::post('businesses', [\App\Modules\Organization\Http\Controllers\BusinessSwitchController::class, 'store'])->middleware('can:business.manage');
