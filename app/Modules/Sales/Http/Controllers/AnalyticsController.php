@@ -4,6 +4,10 @@ namespace App\Modules\Sales\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Catalogue\Models\Product;
+use App\Modules\Catalogue\Models\ProductCategory;
+use App\Modules\Catalogue\Models\ProductUnit;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Rebates\Models\RebateCalculation;
 use App\Modules\Expenses\Models\Expense;
 use App\Modules\Expenses\Models\ExpenseCategory;
 use App\Modules\Organization\Models\Branch;
@@ -61,6 +65,9 @@ class AnalyticsController extends Controller
             'basket' => $this->basket($cur['sales']),
             'receivables' => $this->receivables($branch),
             'missing_cost' => $this->missingCost($cur['sales']),
+            'transactions' => $this->transactions($from, $to, $branch),
+            'catalogue' => $this->catalogue($cur, $branch),
+            'discounts' => $this->discounts($cur, $from, $to),
         ]);
     }
 
@@ -80,12 +87,17 @@ class AnalyticsController extends Controller
         $returns = SaleReturn::query()->whereBetween('returned_at', [$from, $to])
             ->when($branch, fn ($q) => $q->where('branch_id', $branch))->get(['total', 'returned_at']);
 
+        $lines = $sales->isEmpty() ? collect() : SaleLine::query()->whereIn('sale_id', $sales->pluck('id'))->get(['sale_id', 'product_id', 'quantity', 'factor', 'list_price', 'unit_price', 'line_total', 'cost_total']);
+        $newCustomers = Customer::whereBetween('created_at', [$from, $to])->get(['created_at']);
+        $named = $sales->whereNotNull('customer_id');
+        $buyerCount = $named->pluck('customer_id')->unique()->count();
+
         $revenue = (int) $sales->sum('total');
         $cogs = (int) $sales->sum('cogs_total');
         $count = $sales->count();
 
         return [
-            'sales' => $sales, 'payments' => $payments, 'expenses' => $expenses, 'returns' => $returns,
+            'sales' => $sales, 'payments' => $payments, 'expenses' => $expenses, 'returns' => $returns, 'lines' => $lines, 'new_customers' => $newCustomers,
             'totals' => [
                 'sales' => $revenue,
                 'orders' => $count,
@@ -99,7 +111,10 @@ class AnalyticsController extends Controller
                 'net_profit' => $revenue - $cogs - (int) $expenses->sum('amount'),
                 'returns' => (int) $returns->sum('total'),
                 'return_count' => $returns->count(),
-                'customers' => $sales->pluck('customer_id')->filter()->unique()->count(),
+                'customers' => $buyerCount,
+                'units' => (int) $lines->sum(fn ($l) => $l->quantity * $l->factor),
+                'avg_spend' => $buyerCount ? intdiv((int) $named->sum('total'), $buyerCount) : 0,
+                'new_customers' => $newCustomers->count(),
             ],
         ];
     }
@@ -113,7 +128,7 @@ class AnalyticsController extends Controller
     {
         $keys = [];
         for ($d = $from->copy(); $d <= $to; $granularity === 'day' ? $d->addDay() : $d->addMonthNoOverflow()) {
-            $keys[$this->bucket($d, $granularity)] = ['date' => $this->bucket($d, $granularity), 'sales' => 0, 'orders' => 0, 'discount' => 0, 'expenses' => 0, 'collected' => 0, 'gross_profit' => 0, 'returns' => 0];
+            $keys[$this->bucket($d, $granularity)] = ['date' => $this->bucket($d, $granularity), 'sales' => 0, 'orders' => 0, 'discount' => 0, 'expenses' => 0, 'collected' => 0, 'gross_profit' => 0, 'returns' => 0, 'units' => 0, 'buyers' => 0, 'new_customers' => 0, 'avg_spend' => 0, '_b' => [], '_named' => 0];
         }
 
         foreach ($p['sales'] as $s) {
@@ -121,6 +136,20 @@ class AnalyticsController extends Controller
             if (isset($keys[$k])) {
                 $keys[$k]['sales'] += $s->total; $keys[$k]['orders']++; $keys[$k]['discount'] += $s->discount_total; $keys[$k]['gross_profit'] += $s->total - $s->cogs_total;
             }
+        }
+        $saleBucket = [];
+        foreach ($p['sales'] as $s) {
+            $k = $this->bucket($s->sold_at, $granularity);
+            $saleBucket[$s->id] = $k;
+            if (isset($keys[$k]) && $s->customer_id) { $keys[$k]['_b'][$s->customer_id] = true; $keys[$k]['_named'] += $s->total; }
+        }
+        foreach ($p['lines'] as $l) {
+            $k = $saleBucket[$l->sale_id] ?? null;
+            if ($k !== null && isset($keys[$k])) { $keys[$k]['units'] += $l->quantity * $l->factor; }
+        }
+        foreach ($p['new_customers'] as $c) {
+            $k = $this->bucket($c->created_at, $granularity);
+            if (isset($keys[$k])) { $keys[$k]['new_customers']++; }
         }
         foreach ($p['expenses'] as $e) {
             $k = $this->bucket($e->expense_date, $granularity);
@@ -134,6 +163,13 @@ class AnalyticsController extends Controller
             $k = $this->bucket($r->returned_at, $granularity);
             if (isset($keys[$k])) { $keys[$k]['returns'] += $r->total; }
         }
+
+        foreach ($keys as &$row) {
+            $row['buyers'] = count($row['_b']);
+            $row['avg_spend'] = $row['buyers'] ? intdiv($row['_named'], $row['buyers']) : 0;
+            unset($row['_b'], $row['_named']);
+        }
+        unset($row);
 
         return array_values($keys);
     }
@@ -195,6 +231,8 @@ class AnalyticsController extends Controller
 
         return [
             'top' => $with->groupBy('customer_id')->map(fn ($g, $id) => ['id' => (int) $id, 'name' => $names[$id] ?? 'Customer', 'amount' => (int) $g->sum('total'), 'orders' => $g->count(), 'owes' => (int) $g->sum('balance_due')])->sortByDesc('amount')->values()->take(15)->all(),
+            'top_orders' => $with->groupBy('customer_id')->map(fn ($g, $id) => ['id' => (int) $id, 'name' => $names[$id] ?? 'Customer', 'amount' => (int) $g->sum('total'), 'orders' => $g->count(), 'owes' => (int) $g->sum('balance_due')])->sortByDesc('orders')->values()->take(15)->all(),
+            'on_file' => Customer::count(),
             'buyers' => $buyers->count(),
             'returning' => $buyers->intersect($firstEver)->count(),
             'new_buyers' => $buyers->diff($firstEver)->count(),
@@ -232,5 +270,89 @@ class AnalyticsController extends Controller
     private function missingCost($sales): bool
     {
         return $sales->isNotEmpty() && $sales->sum('cogs_total') === 0;
+    }
+
+    /** Payments received in the period, newest first (capped), for the transaction history table. */
+    private function transactions(Carbon $from, Carbon $to, ?int $branch): array
+    {
+        $q = SalePayment::query()->whereBetween('paid_at', [$from, $to])->when($branch, fn ($q) => $q->where('branch_id', $branch));
+        $total = (clone $q)->count();
+        $rows = $q->orderByDesc('paid_at')->limit(200)->get(['id', 'sale_id', 'method', 'amount', 'reference', 'paid_at', 'voided_at']);
+        $sales = Sale::withoutGlobalScopes()->whereIn('id', $rows->pluck('sale_id')->unique())->get(['id', 'number', 'customer_id', 'channel'])->keyBy('id');
+        $names = Customer::whereIn('id', $sales->pluck('customer_id')->filter()->unique())->pluck('name', 'id');
+
+        return [
+            'total' => $total,
+            'rows' => $rows->map(fn ($p) => [
+                'id' => $p->id, 'date' => $p->paid_at?->toIso8601String(), 'number' => $sales[$p->sale_id]->number ?? null,
+                'customer' => ($sales[$p->sale_id]->customer_id ?? null) ? ($names[$sales[$p->sale_id]->customer_id] ?? 'Customer') : null,
+                'amount' => (int) $p->amount, 'method' => $p->method, 'channel' => $sales[$p->sale_id]->channel ?? null,
+                'status' => $p->voided_at ? 'voided' : 'completed', 'reference' => $p->reference,
+            ])->values()->all(),
+        ];
+    }
+
+    /** What is on the shelf today (stock is a snapshot, not tied to the date range) and how products moved in the period. */
+    private function catalogue(array $cur, ?int $branch): array
+    {
+        $products = Product::query()->where('is_active', true)->get(['id', 'name', 'category_id']);
+        $stock = StockBalance::query()->where('status', 'saleable')
+            ->when($branch, fn ($q) => $q->whereHas('warehouse', fn ($w) => $w->where('branch_id', $branch)))
+            ->get(['product_id', 'quantity'])->groupBy('product_id')->map(fn ($g) => (int) $g->sum('quantity'));
+
+        // Cost per bottle/can estimated from what past sales recorded, since stock itself carries no cost.
+        $cost = SaleLine::query()->where('cost_total', '>', 0)->get(['product_id', 'quantity', 'factor', 'cost_total'])->groupBy('product_id')
+            ->map(function ($g) { $u = $g->sum(fn ($l) => $l->quantity * $l->factor); return $u > 0 ? $g->sum('cost_total') / $u : 0; });
+
+        $value = 0; $valued = 0;
+        foreach ($stock as $pid => $qty) {
+            if ($qty > 0 && ($cost[$pid] ?? 0) > 0) { $value += $qty * $cost[$pid]; $valued++; }
+        }
+
+        $soldUnits = $cur['lines']->groupBy('product_id')->map(fn ($g) => (int) $g->sum(fn ($l) => $l->quantity * $l->factor));
+        $catNames = ProductCategory::pluck('name', 'id');
+        $byCat = $products->groupBy('category_id')->map(fn ($g, $cid) => [
+            'name' => $catNames[$cid] ?? 'Uncategorised',
+            'units' => (int) $g->sum(fn ($p) => $soldUnits[$p->id] ?? 0),
+        ])->filter(fn ($c) => $c['units'] > 0)->sortByDesc('units')->values()->take(8)->all();
+
+        $out = $products->filter(fn ($p) => ($stock[$p->id] ?? 0) <= 0);
+        $slow = $products->filter(fn ($p) => ($stock[$p->id] ?? 0) > 0 && ! isset($soldUnits[$p->id]))
+            ->map(fn ($p) => ['id' => $p->id, 'name' => $p->name, 'stock' => $stock[$p->id]])->sortByDesc('stock')->values()->take(10)->all();
+
+        return [
+            'total_products' => $products->count(),
+            'stock_units' => (int) $stock->sum(),
+            'stock_value' => (int) round($value),
+            'stock_value_products' => $valued,
+            'out_of_stock' => $out->count(),
+            'out_of_stock_names' => $out->pluck('name')->take(10)->values()->all(),
+            'categories' => ProductCategory::count(),
+            'pack_sizes' => ProductUnit::count(),
+            'top_categories' => $byCat,
+            'slow_movers' => $slow,
+        ];
+    }
+
+    /** Discounts and price promotions given in the period, plus rebates the depot earned from the manufacturer. */
+    private function discounts(array $cur, Carbon $from, Carbon $to): array
+    {
+        $sales = $cur['sales'];
+        $names = Product::whereIn('id', $cur['lines']->pluck('product_id')->unique())->pluck('name', 'id');
+        $perProduct = $cur['lines']->groupBy('product_id')->map(function ($g, $id) use ($names) {
+            return ['id' => (int) $id, 'name' => $names[$id] ?? 'Product', 'discount' => (int) $g->sum(fn ($l) => max(0, $l->list_price - $l->unit_price) * $l->quantity), 'units' => (int) $g->sum(fn ($l) => $l->quantity * $l->factor)];
+        })->filter(fn ($r) => $r['discount'] > 0)->sortByDesc('discount')->values()->take(10)->all();
+
+        $withDiscount = $sales->where('discount_total', '>', 0);
+        $rebates = RebateCalculation::query()->whereNull('voided_at')->whereBetween('period_end', [$from->toDateString(), $to->toDateString()])->get(['status', 'total_rebate']);
+
+        return [
+            'sales_with_discount' => $withDiscount->count(),
+            'share_of_sales' => $sales->count() ? round($withDiscount->count() / $sales->count() * 100) : 0,
+            'average_discount' => $withDiscount->count() ? intdiv((int) $withDiscount->sum('discount_total'), $withDiscount->count()) : 0,
+            'by_channel' => $sales->groupBy('channel')->map(fn ($g, $k) => ['key' => (string) $k, 'amount' => (int) $g->sum('discount_total'), 'count' => $g->where('discount_total', '>', 0)->count()])->filter(fn ($r) => $r['amount'] > 0)->sortByDesc('amount')->values()->all(),
+            'top_products' => $perProduct,
+            'rebates' => ['count' => $rebates->count(), 'amount' => (int) $rebates->sum('total_rebate'), 'by_status' => $rebates->groupBy('status')->map(fn ($g, $k) => ['key' => (string) $k, 'amount' => (int) $g->sum('total_rebate'), 'count' => $g->count()])->values()->all()],
+        ];
     }
 }
