@@ -19,7 +19,7 @@ class CustomerController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        // A salesperson with routes sees their routes' customers unless they ask for everyone.
+        // A van salesman with routes sees their routes' customers unless they ask for everyone.
         $routeCustomers = $request->boolean('all_routes') ? null : \App\Modules\FieldSales\Services\RepRoutes::customerIds((int) $request->user()->id);
 
         $paginator = Customer::query()

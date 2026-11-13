@@ -33,7 +33,7 @@ class RoleController extends Controller
                 ->map(fn ($r) => [
                     'id' => $r->id,
                     'name' => $r->name,
-                    'is_template' => array_key_exists($r->name, Permissions::roleTemplates()),
+                    'is_template' => $r->system_key !== null, 'is_owner' => $r->system_key === 'owner',
                     'permissions' => $r->permissions->pluck('name')->values(),
                 ]);
 
@@ -70,22 +70,28 @@ class RoleController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $role = Role::where('store_id', $this->access->requireStoreId())->findOrFail($id);
-        abort_if($role->name === 'Owner', 422, 'The Owner role cannot be edited.');
+        $isOwner = $role->system_key === 'owner';
 
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:60',
                 Rule::unique('roles', 'name')->where('store_id', $role->store_id)->ignore($role->id)],
-            'permissions' => ['required', 'array', 'min:1'],
+            'permissions' => [$isOwner ? 'sometimes' : 'required', 'array', 'min:1'],
             'permissions.*' => ['string', Rule::in(Permissions::all())],
         ]);
 
-        $this->assertCanGrant($data['permissions']);
+        // The Owner role always has every permission; it can be renamed but not trimmed.
+        if (! $isOwner) {
+            $this->assertCanGrant($data['permissions']);
+        }
 
-        DB::transaction(function () use ($role, $data) {
-            if (isset($data['name']) && ! array_key_exists($role->name, Permissions::roleTemplates())) {
+        DB::transaction(function () use ($role, $data, $isOwner) {
+            if (isset($data['name'])) {
                 $role->update(['name' => $data['name']]);
             }
-            $role->syncPermissions($data['permissions']);
+
+            if (! $isOwner) {
+                $role->syncPermissions($data['permissions']);
+            }
         });
 
         return response()->json($role);
@@ -95,7 +101,7 @@ class RoleController extends Controller
     {
         $role = Role::where('store_id', $this->access->requireStoreId())->findOrFail($id);
 
-        abort_if(array_key_exists($role->name, Permissions::roleTemplates()), 422, 'Standard roles cannot be deleted.');
+        abort_if($role->system_key !== null, 422, 'Standard roles cannot be deleted. You can rename them or change what they allow.');
         abort_if(DB::table('model_has_roles')->where('role_id', $role->id)->exists(), 422,
             'Reassign the users in this role first.');
 

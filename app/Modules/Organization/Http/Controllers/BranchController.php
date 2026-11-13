@@ -74,7 +74,7 @@ class BranchController extends Controller
     /** Branch-level users may edit their own branch but never create or delete branches. */
     private function assertStoreLevel(): void
     {
-        abort_if($this->access->isBranchRestricted(), 403, 'Only store-level users can do this.');
+        abort_if($this->access->isBranchLocked(), 403, 'Only head-office users can do this.');
     }
 
     private function rules(int $storeId, ?Branch $branch = null): array

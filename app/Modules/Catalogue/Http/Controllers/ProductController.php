@@ -107,19 +107,14 @@ class ProductController extends Controller
         $this->resolveVariationNames($request, $product->store_id);
         $data = $request->validate($this->rules($product->store_id, $product));
 
-        // The base unit is what stock is counted in, so it can only change while the product has no history at all.
+        // The base unit is only a label on the smallest variation (stock is counted in it either way), so it can be corrected
+        // at any time: everything already recorded in it is relabelled with it.
         $newBase = isset($data['base_unit_id']) ? (int) $data['base_unit_id'] : null;
         unset($data['base_unit_id']);
 
-        if ($newBase !== null && $newBase !== (int) $product->base_unit_id) {
-            abort_if($this->hasHistory($product->id), 422, 'This product already has stock, sales or purchases counted in its current unit, so the unit cannot change. Untick Active and add a new product instead.');
-            abort_unless(array_key_exists('units', $data), 422, 'Send the pack list along with a new base unit.');
-        }
-
         DB::transaction(function () use ($product, $data, $newBase) {
             if ($newBase !== null && $newBase !== (int) $product->base_unit_id) {
-                ProductUnit::where('product_id', $product->id)->update(['is_base' => false]);
-                $product->update(['base_unit_id' => $newBase]);
+                $this->relabelBase($product, $newBase);
             }
 
             $product->update(collect($data)->except(['units', 'barcode'])->all());
@@ -139,25 +134,7 @@ class ProductController extends Controller
      */
     private function resolveVariationNames(Request $request, int $storeId): void
     {
-        $find = function (string $name) use ($storeId): int {
-            $name = trim(preg_replace('/\s+/', ' ', $name));
-            abort_if($name === '', 422, 'Every variation needs a name.');
-
-            $unit = Unit::query()->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->first();
-
-            if (! $unit) {
-                $base = mb_substr(preg_replace('/[^a-z0-9]/', '', mb_strtolower($name)) ?: 'unit', 0, 8);
-                $abbr = $base;
-
-                for ($i = 2; Unit::withTrashed()->where('store_id', $storeId)->where('abbreviation', $abbr)->exists(); $i++) {
-                    $abbr = mb_substr($base, 0, 10 - strlen((string) $i)).$i;
-                }
-
-                $unit = Unit::create(['store_id' => $storeId, 'name' => mb_substr($name, 0, 50), 'abbreviation' => $abbr]);
-            }
-
-            return $unit->id;
-        };
+        $find = fn (string $name): int => \App\Modules\Catalogue\Services\UnitNames::find($storeId, $name);
 
         if ($request->filled('base_unit_name') && ! $request->filled('base_unit_id')) {
             $request->merge(['base_unit_id' => $find((string) $request->input('base_unit_name'))]);
@@ -288,6 +265,53 @@ class ProductController extends Controller
             'truncated' => $rows->count() >= 2000,
             'movements' => $filtered->reverse()->values(),
         ]);
+    }
+
+    /** Renames what the smallest variation is called, in place, so prices and past documents keep pointing at it. */
+    private function relabelBase(Product $product, int $newUnitId): void
+    {
+        $old = (int) $product->base_unit_id;
+
+        abort_if(
+            ProductUnit::where('product_id', $product->id)->where('unit_id', $newUnitId)->where('is_base', false)->exists(),
+            422,
+            'That name is already used by one of the bigger variations of this product. Rename or remove that one first.',
+        );
+
+        ProductUnit::where('product_id', $product->id)->where('unit_id', $old)->where('is_base', true)->update(['unit_id' => $newUnitId]);
+        $product->update(['base_unit_id' => $newUnitId]);
+
+        foreach (['sale_lines', 'sale_return_lines', 'purchase_order_lines', 'goods_receipt_lines', 'proforma_lines', 'sales_targets', 'stock_transfer_lines', 'trip_lines', 'rebate_lines'] as $table) {
+            if (\Illuminate\Support\Facades\Schema::hasTable($table) && \Illuminate\Support\Facades\Schema::hasColumn($table, 'unit_id') && \Illuminate\Support\Facades\Schema::hasColumn($table, 'product_id')) {
+                DB::table($table)->where('product_id', $product->id)->where('unit_id', $old)->update(['unit_id' => $newUnitId]);
+            }
+        }
+    }
+
+    /** Changes what many products are counted in at once, e.g. every PET product to "Plastic bottle". */
+    public function bulkUnit(Request $request): JsonResponse
+    {
+        $data = $request->validate(['product_ids' => ['required', 'array', 'min:1', 'max:500'], 'product_ids.*' => ['integer'], 'base_unit_name' => ['required', 'string', 'max:50']]);
+        $storeId = $this->access->requireStoreId();
+        $unitId = \App\Modules\Catalogue\Services\UnitNames::find($storeId, $data['base_unit_name']);
+
+        $changed = 0;
+        $skipped = [];
+
+        foreach (Product::whereIn('id', $data['product_ids'])->get() as $product) {
+            if ((int) $product->base_unit_id === $unitId) {
+                continue;
+            }
+
+            try {
+                DB::transaction(fn () => $this->relabelBase($product, $unitId));
+                $changed++;
+            } catch (\Illuminate\Http\Exceptions\HttpResponseException|\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+                $skipped[] = ['id' => $product->id, 'name' => $product->name, 'reason' => $e->getMessage()];
+            }
+        }
+
+        return response()->json(['changed' => $changed, 'skipped' => $skipped]);
     }
 
     /** True once anything has been counted, sold or bought in this product's unit. */

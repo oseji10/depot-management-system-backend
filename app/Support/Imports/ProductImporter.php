@@ -7,6 +7,7 @@ use App\Modules\Catalogue\Models\PriceList;
 use App\Modules\Catalogue\Models\Product;
 use App\Modules\Catalogue\Models\ProductPrice;
 use App\Modules\Catalogue\Models\ProductUnit;
+use App\Modules\Catalogue\Services\UnitNames;
 use App\Modules\Inventory\Models\StockAdjustment;
 use App\Modules\Inventory\Services\DocumentNumber;
 use App\Modules\Inventory\Support\StockStatus;
@@ -20,8 +21,22 @@ use Illuminate\Support\Facades\DB;
  */
 class ProductImporter
 {
-    public function __construct(private int $storeId, private User $actor, private int $categoryId, private int $baseUnitId, private ?Warehouse $warehouse)
+    public function __construct(private int $storeId, private User $actor, private int $categoryId, private ?int $baseUnitId, private ?Warehouse $warehouse)
     {
+    }
+
+    private array $unitCache = [];
+
+    /** The sheet's own Unit column wins; otherwise the product name says (RGB = Bottle, PET = Plastic bottle, CAN = Can); otherwise the unit chosen on screen. */
+    private function unitFor(array $row, string $packaging): int
+    {
+        $name = Cell::text($row, 'Unit', 50) ?? match ($packaging) { 'rgb' => 'Bottle', 'pet' => 'Plastic bottle', 'can' => 'Can', default => null };
+
+        if ($name === null) {
+            return $this->baseUnitId ?? $this->unitCache['_'] ??= UnitNames::find($this->storeId, 'Bottle');
+        }
+
+        return $this->unitCache[mb_strtolower($name)] ??= UnitNames::find($this->storeId, $name);
     }
 
     public static function packaging(string $name): string
@@ -81,13 +96,14 @@ class ProductImporter
                     }
 
                     $packaging = self::packaging($name);
+                    $unitId = $this->unitFor($row, $packaging);
                     $product = Product::create([
                         'store_id' => $this->storeId, 'sku' => $sku, 'name' => $name, 'packaging' => $packaging, 'is_returnable' => $packaging === 'rgb',
                         'size_label' => preg_match('/(\d+(?:\.\d+)?)\s?(cl|ml|l)\b/i', $name, $m) ? mb_strtolower($m[1].$m[2]) : null,
-                        'category_id' => $this->categoryId, 'base_unit_id' => $this->baseUnitId, 'is_active' => true,
+                        'category_id' => $this->categoryId, 'base_unit_id' => $unitId, 'is_active' => true,
                     ]);
 
-                    $unit = ProductUnit::create(['store_id' => $this->storeId, 'product_id' => $product->id, 'unit_id' => $this->baseUnitId, 'factor' => 1, 'is_base' => true, 'is_active' => true]);
+                    $unit = ProductUnit::create(['store_id' => $this->storeId, 'product_id' => $product->id, 'unit_id' => $unitId, 'factor' => 1, 'is_base' => true, 'is_active' => true]);
                     $report->add('created');
 
                     if ($price && $list) {

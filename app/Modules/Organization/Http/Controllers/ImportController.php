@@ -41,12 +41,12 @@ class ImportController extends Controller
         $data = $request->validate([
             ...$this->rowRules(),
             'category_id' => ['required', 'integer', Rule::exists('product_categories', 'id')->where('store_id', $storeId)],
-            'base_unit_id' => ['required', 'integer', Rule::exists('units', 'id')->where('store_id', $storeId)],
+            'base_unit_id' => ['nullable', 'integer', Rule::exists('units', 'id')->where('store_id', $storeId)],
             'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('store_id', $storeId)],
         ]);
 
         $warehouse = ! empty($data['warehouse_id']) ? Warehouse::findOrFail($data['warehouse_id']) : null;
-        $importer = new ProductImporter($storeId, $request->user(), $data['category_id'], $data['base_unit_id'], $warehouse);
+        $importer = new ProductImporter($storeId, $request->user(), $data['category_id'], $data['base_unit_id'] ?? null, $warehouse);
 
         return $this->tracked($request, 'products', fn () => $importer->run($data['rows']), count($data['rows']));
     }

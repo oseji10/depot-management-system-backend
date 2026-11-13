@@ -95,7 +95,7 @@ class AuthController extends Controller
             'level' => $user->is_super_admin ? 'platform' : ($user->branch_id ? 'branch' : 'store'),
             'van' => ($van = \App\Modules\Organization\Models\Warehouse::vanOf($user->id)) ? ['id' => $van->id, 'name' => $van->name] : null,
             'roles' => $user->getRoleNames()->values(),
-            'permissions' => $user->is_super_admin ? ['*'] : ($user->hasRole('Owner') ? \App\Support\Permissions::all() : $user->getAllPermissions()->pluck('name')->values()),
+            'permissions' => $user->is_super_admin ? ['*'] : ($user->isOwner() ? \App\Support\Permissions::all() : $user->getAllPermissions()->pluck('name')->values()),
         ];
     }
 }

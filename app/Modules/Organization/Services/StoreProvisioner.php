@@ -62,7 +62,7 @@ class StoreProvisioner
 
             app(PermissionRegistrar::class)->setPermissionsTeamId($store->id);
             $owner->unsetRelation('roles')->unsetRelation('permissions');
-            $owner->assignRole('Owner');
+            $owner->assignRole(Role::where('store_id', $store->id)->where('system_key', 'owner')->firstOrFail());
 
             DB::table('user_stores')->insertOrIgnore(['user_id' => $owner->id, 'store_id' => $store->id, 'branch_id' => null, 'is_owner' => true, 'created_at' => now(), 'updated_at' => now()]);
 
@@ -79,7 +79,10 @@ class StoreProvisioner
         app(PermissionRegistrar::class)->setPermissionsTeamId($store->id);
 
         foreach (Permissions::roleTemplates() as $name => $permissions) {
-            $role = Role::firstOrCreate(['name' => $name, 'guard_name' => 'web', 'store_id' => $store->id]);
+            $key = Permissions::roleKey($name);
+            $role = Role::where('store_id', $store->id)->where('system_key', $key)->first()
+                ?? Role::firstOrCreate(['name' => $name, 'guard_name' => 'web', 'store_id' => $store->id]);
+            $role->forceFill(['system_key' => $key])->save();
             $role->syncPermissions($permissions);
         }
     }

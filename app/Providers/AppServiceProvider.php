@@ -33,7 +33,7 @@ class AppServiceProvider extends ServiceProvider
                 try {
                     app(\Spatie\Permission\PermissionRegistrar::class)->setPermissionsTeamId($user->store_id);
 
-                    return $user->hasRole('Owner') ? true : null;
+                    return $user->isOwner() ? true : null;
                 } catch (\Throwable) {
                     return null;
                 }

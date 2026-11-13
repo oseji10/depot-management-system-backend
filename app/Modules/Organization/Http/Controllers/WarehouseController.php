@@ -71,7 +71,7 @@ class WarehouseController extends Controller
 
     public function destroy(Warehouse $warehouse): JsonResponse
     {
-        abort_if($warehouse->isVan(), 422, 'A van belongs to a salesperson and cannot be deleted.');
+        abort_if($warehouse->isVan(), 422, 'A van belongs to a van salesman and cannot be deleted.');
         abort_if($warehouse->is_default, 422, 'Make another warehouse the default first.');
         // Once stock exists (phase 2) this must also refuse when the warehouse has movements.
         $warehouse->delete();

@@ -210,7 +210,7 @@ class SaleService
                 ?? throw ValidationException::withMessages(['payments' => 'That card terminal is not available for this sale.']);
         }
 
-        // A salesperson carrying a machine does not choose: it is the one they were handed.
+        // A van salesman carrying a machine does not choose: it is the one they were handed.
         if ((clone $usable)->where('assigned_user_id', $actor->id)->exists()) {
             return (clone $usable)->where('assigned_user_id', $actor->id)->value('id');
         }
@@ -257,13 +257,13 @@ class SaleService
     }
 
     /**
-     * Salespeople sell from their own van, and only while stock is issued to them. Everyone else sells from
+     * Van Salesmen sell from their own van, and only while stock is issued to them. Everyone else sells from
      * ordinary warehouses. Returns the open trip the sale belongs to, if any.
      */
     private function tripFor(Warehouse $warehouse, User $actor): ?Trip
     {
         if ($warehouse->isVan()) {
-            abort_unless($warehouse->assigned_user_id === $actor->id, 403, 'That van belongs to another salesperson.');
+            abort_unless($warehouse->assigned_user_id === $actor->id, 403, 'That van belongs to another van salesman.');
 
             return Trip::withoutGlobalScopes()->where('van_warehouse_id', $warehouse->id)->where('status', 'open')->first()
                 ?? abort(422, 'No stock has been issued to you yet. Ask the warehouse to issue your load first.');

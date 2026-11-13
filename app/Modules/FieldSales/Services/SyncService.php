@@ -20,7 +20,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
 /**
- * Takes what a salesperson's phone queued while it had no signal and records it, oldest first.
+ * Takes what a van salesman's phone queued while it had no signal and records it, oldest first.
  *
  * Every item carries a client_ref chosen on the phone, so sending the same thing twice (a dropped connection, a
  * retry) never records it twice. Each item succeeds or fails on its own:
@@ -65,7 +65,7 @@ class SyncService
         return $results;
     }
 
-    /** Runs a rejected item again as the salesperson who made it. Used by managers. */
+    /** Runs a rejected item again as the van salesman who made it. Used by managers. */
     public function retry(SyncIssue $issue, bool $reprice = false): array
     {
         $rep = User::findOrFail($issue->user_id);
@@ -217,7 +217,7 @@ class SyncService
         return ['status' => 'created', 'id' => $expense->id, 'number' => $expense->number];
     }
 
-    /** Services run with the salesperson's permissions (discount rules, branch scope), even when a manager triggers a retry. */
+    /** Services run with the van salesman's permissions (discount rules, branch scope), even when a manager triggers a retry. */
     private function actAs(User $rep): void
     {
         app(\Spatie\Permission\PermissionRegistrar::class)->setPermissionsTeamId($rep->store_id);

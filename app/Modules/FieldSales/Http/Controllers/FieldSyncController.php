@@ -15,7 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use App\Modules\Organization\Models\Warehouse;
 
-/** The three calls a salesperson's phone makes: download everything for the day, send what was queued, say what is left. */
+/** The three calls a van salesman's phone makes: download everything for the day, send what was queued, say what is left. */
 class FieldSyncController extends Controller
 {
     public function __construct(private PosCatalogue $catalogue, private SyncService $sync, private TripService $trips)
@@ -30,7 +30,7 @@ class FieldSyncController extends Controller
         abort_unless($van, 403, 'This account has no van.');
 
         $trip = $this->trips->openTripFor($user);
-        // A salesperson with routes downloads only those routes' customers; the rest can be loaded on request (see customers()).
+        // A van salesman with routes downloads only those routes' customers; the rest can be loaded on request (see customers()).
         $mine = RepRoutes::customerIds($user->id);
         $customers = Customer::where('is_active', true)->when($mine !== null, fn ($q) => $q->whereIn('id', $mine))->orderBy('name')->limit(3000)->get(['id', 'name', 'phone', 'address', 'type', 'credit_limit', 'empties_mode']);
         $owing = Customer::outstanding($customers->pluck('id')->all());
@@ -50,7 +50,7 @@ class FieldSyncController extends Controller
         ]);
     }
 
-    /** Routes this salesperson does not cover, with how many customers each has, for the "load other customers" choice. */
+    /** Routes this van salesman does not cover, with how many customers each has, for the "load other customers" choice. */
     private function otherRoutes(int $userId): array
     {
         $mine = RepRoutes::routeIds($userId);

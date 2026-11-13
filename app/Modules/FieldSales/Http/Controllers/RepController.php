@@ -15,7 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rules\Password;
 
-/** Salesperson accounts: a login plus a van, created together. */
+/** Van Salesman accounts: a login plus a van, created together. */
 class RepController extends Controller
 {
     public function __construct(private AccessScope $access, private TripService $trips)
@@ -121,7 +121,7 @@ class RepController extends Controller
 
         if (array_key_exists('branch_id', $data)) {
             $van = Warehouse::vanOf($user->id);
-            abort_if($van->branch_id !== (int) $data['branch_id'] && ($this->trips->openTripFor($user) || \App\Modules\Inventory\Models\StockBalance::where('warehouse_id', $van->id)->where('quantity', '>', 0)->exists()), 422, 'This salesperson still has stock out. Check them in before moving them to another branch.');
+            abort_if($van->branch_id !== (int) $data['branch_id'] && ($this->trips->openTripFor($user) || \App\Modules\Inventory\Models\StockBalance::where('warehouse_id', $van->id)->where('quantity', '>', 0)->exists()), 422, 'This van salesman still has stock out. Check them in before moving them to another branch.');
             \App\Modules\Organization\Models\Branch::findOrFail($data['branch_id']);
             $van->update(['branch_id' => $data['branch_id']]);
         }
@@ -133,7 +133,7 @@ class RepController extends Controller
 
         abort_if(
             array_key_exists('is_active', $data) && ! $data['is_active'] && $this->trips->openTripFor($user),
-            422, 'This salesperson still has stock out. Check them in first.',
+            422, 'This van salesman still has stock out. Check them in first.',
         );
 
         $fill = collect($data)->except('password')->all();
@@ -150,7 +150,7 @@ class RepController extends Controller
         return response()->json($user->fresh()->only(['id', 'name', 'email', 'phone', 'is_active']));
     }
 
-    /** Only a salesperson who has never sold, taken stock, or logged an expense can be deleted. Anyone else is disabled instead. */
+    /** Only a van salesman who has never sold, taken stock, or logged an expense can be deleted. Anyone else is disabled instead. */
     public function destroy(int $id): JsonResponse
     {
         $user = User::query()->visibleToActor()->findOrFail($id);
@@ -158,10 +158,10 @@ class RepController extends Controller
         abort_unless($van, 404);
 
         foreach (['sales' => 'created_by', 'trips' => 'rep_id', 'trip_loads' => 'user_id', 'expenses' => 'created_by'] as $table => $column) {
-            abort_if(\Illuminate\Support\Facades\DB::table($table)->where($column, $user->id)->exists(), 422, 'This salesperson already has sales or trip history, so they cannot be deleted. Disable their account instead.');
+            abort_if(\Illuminate\Support\Facades\DB::table($table)->where($column, $user->id)->exists(), 422, 'This van salesman already has sales or trip history, so they cannot be deleted. Disable their account instead.');
         }
 
-        abort_if(StockBalance::where('warehouse_id', $van->id)->where('quantity', '<>', 0)->exists(), 422, 'There is stock on this salesperson\'s van. Check it in first.');
+        abort_if(StockBalance::where('warehouse_id', $van->id)->where('quantity', '<>', 0)->exists(), 422, 'There is stock on this van salesman\'s van. Check it in first.');
 
         try {
             \Illuminate\Support\Facades\DB::transaction(function () use ($user, $van) {
@@ -174,7 +174,7 @@ class RepController extends Controller
                 $user->delete();
             });
         } catch (\Illuminate\Database\QueryException) {
-            abort(422, 'This salesperson is referenced by other records, so they cannot be deleted. Disable their account instead.');
+            abort(422, 'This van salesman is referenced by other records, so they cannot be deleted. Disable their account instead.');
         }
 
         return response()->json(null, 204);

@@ -38,6 +38,12 @@ class User extends Authenticatable
         ];
     }
 
+    /** True for the business owner, whatever the Owner role has been renamed to. */
+    public function isOwner(): bool
+    {
+        return $this->roles->contains(fn ($r) => $r->system_key === 'owner');
+    }
+
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);

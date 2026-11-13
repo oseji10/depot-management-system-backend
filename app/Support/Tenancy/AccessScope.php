@@ -77,7 +77,11 @@ class AccessScope
             return $this->headerInt('X-Branch-Id');
         }
 
-        if ($user->branch_id) {
+        if ($this->widened && ! $this->lockedBranchOf($user)) {
+            return null;
+        }
+
+        if ($this->lockedBranchOf($user)) {
             return $user->branch_id;
         }
 
@@ -107,7 +111,7 @@ class AccessScope
         $user = Auth::user();
         $id = $user ? $this->headerInt('X-Warehouse-Id') : null;
 
-        if (! $id || ! $user->store_id || $user->is_super_admin || $user->branch_id) {
+        if (! $id || ! $user->store_id || $user->is_super_admin || $this->lockedBranchOf($user)) {
             return null;
         }
 
@@ -116,11 +120,50 @@ class AccessScope
         return $this->warehouseChecks["{$user->store_id}:{$id}"] ? $id : null;
     }
 
-    /** True when the actor can only work inside one branch. */
+    /** @var array<int, bool> */
+    private array $lockedChecks = [];
+
+    /** A user pinned to one branch. An owner is never pinned: the Owner has the whole business wherever their login points. */
+    private function lockedBranchOf($user): bool
+    {
+        return $this->lockedChecks[$user->id] ??= (bool) $user->branch_id && ! $this->isOwnerOf($user);
+    }
+
+    private function isOwnerOf($user): bool
+    {
+        try {
+            app(\Spatie\Permission\PermissionRegistrar::class)->setPermissionsTeamId($user->store_id);
+
+            return $user->isOwner();
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /** True when the actor is limited to one branch, or is currently looking at just one (the branch picker). Use for what data to show. */
     public function isBranchRestricted(): bool
     {
         return $this->branchId() !== null;
     }
+
+    /**
+     * True only when the person's account is tied to a branch. An owner or head-office user who merely picked a branch to
+     * look at is NOT locked, so they can still add branches, run payroll, open the books and so on.
+     */
+    public function isBranchLocked(): bool
+    {
+        $user = Auth::user();
+
+        return $user !== null && ! $user->is_super_admin && $this->lockedBranchOf($user);
+    }
+
+    /** For whole-business screens: ignore the branch picker for the rest of this request so totals cover every branch. */
+    public function widenToWholeBusiness(): void
+    {
+        $this->widened = true;
+    }
+
+    private bool $widened = false;
 
     /** For write operations: a store context must exist (super admins must pick a store first). */
     public function requireStoreId(): int

@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** One outing: stock issued to a salesperson, what they sold, and what came back. */
+/** One outing: stock issued to a van salesman, what they sold, and what came back. */
 class Trip extends Model
 {
     use Auditable, BelongsToStore, BranchScoped;

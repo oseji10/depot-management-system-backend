@@ -129,7 +129,7 @@ class NotificationService
 
         if ($issues > 0) {
             $this->add($storeId, ['kind' => 'sync', 'severity' => 'warning', 'permission' => 'trips.view', 'url' => '/field/issues', 'dedupe_key' => "sync:{$today}",
-                'title' => "{$issues} offline sale".($issues === 1 ? '' : 's').' need attention', 'body' => 'A salesperson’s phone sent something the depot could not accept.']);
+                'title' => "{$issues} offline sale".($issues === 1 ? '' : 's').' need attention', 'body' => 'A van salesman’s phone sent something the depot could not accept.']);
         }
 
         $pending = StaffCharge::where('status', 'pending')->count();

@@ -27,7 +27,7 @@ use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
- * A salesperson works out of a van: a warehouse of their own. The warehouse issues stock onto the van, the salesperson
+ * A van salesman works out of a van: a warehouse of their own. The warehouse issues stock onto the van, the van salesman
  * sells from it (the normal sale flow, so stock, cost and accounts all stay right), and at check-in what is left
  * comes back. Anything that neither sold nor came back is written off at cost and shown as a shortage.
  */
@@ -37,7 +37,7 @@ class TripService
     {
     }
 
-    /** Creates the salesperson's login and their van in one step. */
+    /** Creates the van salesman's login and their van in one step. */
     public function createRep(array $data, int $storeId): User
     {
         return DB::transaction(function () use ($data, $storeId) {
@@ -45,7 +45,13 @@ class TripService
 
             app(PermissionRegistrar::class)->setPermissionsTeamId($storeId);
 
-            $role = Role::firstOrCreate(['name' => 'Van Salesman', 'guard_name' => 'web', 'store_id' => $storeId]);
+            // Found by its hidden key, so it keeps working after the business renames the role.
+            $role = Role::where('store_id', $storeId)->where('system_key', 'van_salesman')->first()
+                ?? Role::firstOrCreate(['name' => 'Van Salesman', 'guard_name' => 'web', 'store_id' => $storeId]);
+
+            if ($role->system_key === null) {
+                $role->forceFill(['system_key' => 'van_salesman'])->save();
+            }
 
             if ($role->wasRecentlyCreated) {
                 $role->syncPermissions(Permissions::roleTemplates()['Van Salesman']);
@@ -67,13 +73,13 @@ class TripService
     }
 
     /**
-     * Gives a card machine to a salesperson for good (until it is taken back): their card and POS-transfer payments go on it
+     * Gives a card machine to a van salesman for good (until it is taken back): their card and POS-transfer payments go on it
      * whether or not they have stock out. Null takes their machine back.
      */
     public function assignTerminal(User $rep, ?int $terminalId): void
     {
         DB::transaction(function () use ($rep, $terminalId) {
-            $van = Warehouse::vanOf($rep->id) ?? throw ValidationException::withMessages(['pos_terminal_id' => 'That user is not a salesperson.']);
+            $van = Warehouse::vanOf($rep->id) ?? throw ValidationException::withMessages(['pos_terminal_id' => 'That user is not a van salesman.']);
             $current = PosTerminal::where('assigned_user_id', $rep->id)->where('keep_with_rep', true)->first();
 
             if (($current?->id) === $terminalId) {
@@ -81,7 +87,7 @@ class TripService
             }
 
             if ($this->openTripFor($rep)) {
-                throw ValidationException::withMessages(['pos_terminal_id' => 'This salesperson has stock out. Check them in before changing their card terminal.']);
+                throw ValidationException::withMessages(['pos_terminal_id' => 'This van salesman has stock out. Check them in before changing their card terminal.']);
             }
 
             $current?->update(['assigned_user_id' => null, 'keep_with_rep' => false]);
@@ -126,10 +132,10 @@ class TripService
     public function issue(User $rep, Warehouse $from, array $lines, ?string $note, User $actor, ?int $vehicleId = null, ?int $terminalId = null): Trip
     {
         return DB::transaction(function () use ($rep, $from, $lines, $note, $actor, $vehicleId, $terminalId) {
-            $van = Warehouse::vanOf($rep->id) ?? throw ValidationException::withMessages(['rep_id' => 'That user is not a salesperson.']);
+            $van = Warehouse::vanOf($rep->id) ?? throw ValidationException::withMessages(['rep_id' => 'That user is not a van salesman.']);
 
             if (! $rep->is_active) {
-                throw ValidationException::withMessages(['rep_id' => 'This salesperson’s account is disabled.']);
+                throw ValidationException::withMessages(['rep_id' => 'This van salesman’s account is disabled.']);
             }
 
             if ($from->isVan() || ! $from->is_active) {
@@ -137,7 +143,7 @@ class TripService
             }
 
             if ($from->branch_id !== $van->branch_id) {
-                throw ValidationException::withMessages(['from_warehouse_id' => 'Issue stock from a warehouse in the salesperson’s own branch.']);
+                throw ValidationException::withMessages(['from_warehouse_id' => 'Issue stock from a warehouse in the van salesman’s own branch.']);
             }
 
             if ($vehicleId) {
@@ -165,11 +171,11 @@ class TripService
                 $trip->update(['vehicle_id' => $vehicleId]);
             }
 
-            // A machine given to the salesperson permanently goes out with every trip.
+            // A machine given to the van salesman permanently goes out with every trip.
             $kept = PosTerminal::where('assigned_user_id', $rep->id)->where('keep_with_rep', true)->value('id');
 
             if ($terminalId && $kept && $terminalId !== $kept) {
-                throw ValidationException::withMessages(['pos_terminal_id' => 'This salesperson already has a card terminal assigned to them. Change it on their profile first.']);
+                throw ValidationException::withMessages(['pos_terminal_id' => 'This van salesman already has a card terminal assigned to them. Change it on their profile first.']);
             }
 
             if ($terminalId ?: $kept) {
@@ -198,7 +204,7 @@ class TripService
 
     /**
      * Stock coming back from the road. With $close the trip ends: whatever is still on the van is written off as a
-     * shortage, and the cash handed in is compared with the cash the salesperson collected.
+     * shortage, and the cash handed in is compared with the cash the van salesman collected.
      *
      * @param  array<int, array{product_id:int, unit_id:int, quantity:int, status?:string}>  $returns
      */
@@ -265,7 +271,7 @@ class TripService
         });
     }
 
-    /** What the salesperson should hand in: cash they took since the trip began, less any payments voided. */
+    /** What the van salesman should hand in: cash they took since the trip began, less any payments voided. */
     public function cashExpected(Trip $trip): int
     {
         $collected = (int) SalePayment::withoutGlobalScopes()
@@ -297,7 +303,7 @@ class TripService
         ];
     }
 
-    /** What the salesperson's phone has not sent yet, and what the server turned down. A trip should not close over either. */
+    /** What the van salesman's phone has not sent yet, and what the server turned down. A trip should not close over either. */
     public function syncState(Trip $trip): array
     {
         return [
@@ -385,7 +391,7 @@ class TripService
     }
 
     /**
-     * Hands a card machine to the salesperson for this trip. From then on their card (and POS-transfer) payments go on that
+     * Hands a card machine to the van salesman for this trip. From then on their card (and POS-transfer) payments go on that
      * machine, and nobody else can use it. Any other machine they were carrying is released.
      */
     private function handTerminal(Trip $trip, User $rep, Warehouse $van, int $terminalId): void
@@ -458,8 +464,8 @@ class TripService
     }
 
     /**
-     * Stock a salesperson did not bring back is charged to them: one PENDING staff charge per product, at today's selling
-     * price, for the manager to approve (or reject) and for payroll to recover. Nothing is charged when the salesperson has
+     * Stock a van salesman did not bring back is charged to them: one PENDING staff charge per product, at today's selling
+     * price, for the manager to approve (or reject) and for payroll to recover. Nothing is charged when the van salesman has
      * no staff record linked to their login; the loss then simply stays with the business.
      *
      * @param  array<int, int>  $short  product_id => base units

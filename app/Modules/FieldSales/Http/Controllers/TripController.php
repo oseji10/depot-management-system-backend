@@ -50,7 +50,7 @@ class TripController extends Controller
         return response()->json($this->trips->report(Trip::findOrFail($id)));
     }
 
-    /** The signed-in salesperson's own van and open trip. Anyone else gets an empty answer. */
+    /** The signed-in van salesman's own van and open trip. Anyone else gets an empty answer. */
     public function mine(Request $request): JsonResponse
     {
         $van = Warehouse::vanOf($request->user()->id);
@@ -62,7 +62,7 @@ class TripController extends Controller
         ]);
     }
 
-    /** Card machines that can be handed to a salesperson with their load: active ones that nobody else is carrying. */
+    /** Card machines that can be handed to a van salesman with their load: active ones that nobody else is carrying. */
     public function terminals(Request $request): JsonResponse
     {
         $rep = $request->integer('rep_id');
@@ -126,7 +126,7 @@ class TripController extends Controller
 
             if ($sync['pending'] > 0 || $sync['issues'] > 0) {
                 return response()->json([
-                    'message' => 'This salesperson still has sales that have not reached the server. Wait for them to sync, or confirm to close anyway.',
+                    'message' => 'This van salesman still has sales that have not reached the server. Wait for them to sync, or confirm to close anyway.',
                     'code' => 'pending_sync', 'sync' => $sync,
                 ], 409);
             }

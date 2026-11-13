@@ -23,7 +23,7 @@ class SyncIssueController extends Controller
         return response()->json($rows);
     }
 
-    /** Runs the rejected item again, as the salesperson who made it. */
+    /** Runs the rejected item again, as the van salesman who made it. */
     public function retry(Request $request, int $id): JsonResponse
     {
         $data = $request->validate(['reprice' => ['sometimes', 'boolean']]);

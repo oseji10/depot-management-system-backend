@@ -83,7 +83,7 @@ class BusinessSwitchController extends Controller
 
         return response()->json([
             'branches' => DB::table('branches')->where('store_id', $user->store_id)->where('is_active', true)->whereNull('deleted_at')->orderBy('name')->get(['id', 'name']),
-            'warehouses' => DB::table('warehouses')->where('store_id', $user->store_id)->where('is_active', true)->orderBy('name')->get(['id', 'name', 'branch_id']),
+            'warehouses' => DB::table('warehouses')->where('store_id', $user->store_id)->where('is_active', true)->where('type', '!=', 'van')->orderBy('name')->get(['id', 'name', 'branch_id']),
         ]);
     }
 }

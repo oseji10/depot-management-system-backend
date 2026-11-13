@@ -24,7 +24,7 @@ class TargetController extends Controller
         return $request->validate(['period' => ['nullable', 'date_format:Y-m']])['period'] ?? now()->format('Y-m');
     }
 
-    /** All salespeople's targets for a month, with the reward rules. */
+    /** All van salesmen's targets for a month, with the reward rules. */
     public function index(Request $request): JsonResponse
     {
         $storeId = $this->access->requireStoreId();
@@ -37,7 +37,7 @@ class TargetController extends Controller
         ]);
     }
 
-    /** Set (or change) the same target for one or more salespeople. */
+    /** Set (or change) the same target for one or more van salesmen. */
     public function store(Request $request): JsonResponse
     {
         $storeId = $this->access->requireStoreId();
@@ -67,10 +67,10 @@ class TargetController extends Controller
             }
         }
 
-        // Only real salespeople (accounts that have a van) can be given a target.
+        // Only real van salesmen (accounts that have a van) can be given a target.
         $reps = Warehouse::where('type', 'van')->whereIn('assigned_user_id', $data['user_ids'])->pluck('assigned_user_id')->all();
         if (count($reps) !== count(array_unique($data['user_ids']))) {
-            throw ValidationException::withMessages(['user_ids' => 'Targets can only be set for salespeople.']);
+            throw ValidationException::withMessages(['user_ids' => 'Targets can only be set for van salesmen.']);
         }
 
         $type = $data['reward_type'];
@@ -154,7 +154,7 @@ class TargetController extends Controller
         return response()->json(['tiers' => $tiers, 'pay_lag' => $data['pay_lag']]);
     }
 
-    /** A salesperson's own targets and how they are doing. */
+    /** A van salesman's own targets and how they are doing. */
     public function mine(Request $request): JsonResponse
     {
         return response()->json($this->targets->mine($request->user(), $this->period($request)));

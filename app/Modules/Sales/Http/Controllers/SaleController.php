@@ -120,7 +120,7 @@ class SaleController extends Controller
         ])->findOrFail($id);
     }
 
-    /** Salespeople see only the sales they made themselves. */
+    /** Van Salesmen see only the sales they made themselves. */
     private function visible(): Builder
     {
         $user = request()->user();

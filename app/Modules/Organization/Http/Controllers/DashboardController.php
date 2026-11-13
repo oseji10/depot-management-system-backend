@@ -21,7 +21,7 @@ class DashboardController extends Controller
     {
         $user = $request->user();
 
-        // Salespeople work from their van; the depot-wide figures are not theirs to see.
+        // Van Salesmen work from their van; the depot-wide figures are not theirs to see.
         $isRep = Warehouse::vanOf($user->id) !== null;
 
         return response()->json([

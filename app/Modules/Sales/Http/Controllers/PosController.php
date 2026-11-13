@@ -22,9 +22,9 @@ class PosController extends Controller
     {
         $warehouse = Warehouse::where('is_active', true)->findOrFail((int) $request->query('warehouse_id'));
 
-        // A van is only for its salesperson, and a salesperson only sells from their van.
+        // A van is only for its van salesman, and a van salesman only sells from their van.
         $own = Warehouse::vanOf($request->user()->id);
-        abort_if($warehouse->isVan() && $warehouse->assigned_user_id !== $request->user()->id, 403, 'That van belongs to another salesperson.');
+        abort_if($warehouse->isVan() && $warehouse->assigned_user_id !== $request->user()->id, 403, 'That van belongs to another van salesman.');
         abort_if($own && $own->id !== $warehouse->id, 403, 'You sell from your van.');
 
         return response()->json($this->catalogue->build($warehouse));

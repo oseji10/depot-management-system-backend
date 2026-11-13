@@ -5,7 +5,7 @@ namespace App\Modules\FieldSales\Services;
 use App\Modules\Sales\Models\CustomerGroup;
 use Illuminate\Support\Facades\DB;
 
-/** Which customers a salesperson normally deals with: the ones on the routes they were given. */
+/** Which customers a van salesman normally deals with: the ones on the routes they were given, and any customer not yet placed on a route. */
 class RepRoutes
 {
     /** @return list<int> group ids */
@@ -14,7 +14,10 @@ class RepRoutes
         return DB::table('rep_routes')->where('user_id', $userId)->pluck('customer_group_id')->map(fn ($v) => (int) $v)->all();
     }
 
-    /** Customer ids on the rep's routes, or null when they have no route (meaning: everyone). */
+    /**
+     * Customer ids a rep with routes works with: the customers on their routes, plus every customer not placed on any route
+     * yet (so nobody has to be re-added when routes are introduced). Null when the rep has no route (meaning: everyone).
+     */
     public static function customerIds(int $userId): ?array
     {
         $routes = self::routeIds($userId);
@@ -23,7 +26,12 @@ class RepRoutes
             return null;
         }
 
-        return DB::table('customer_group_members')->whereIn('customer_group_id', $routes)->pluck('customer_id')->map(fn ($v) => (int) $v)->unique()->values()->all();
+        $mine = DB::table('customer_group_members')->whereIn('customer_group_id', $routes)->pluck('customer_id');
+
+        $onSomeRoute = DB::table('customer_group_members as m')->join('customer_groups as g', 'g.id', '=', 'm.customer_group_id')->where('g.kind', 'route')->select('m.customer_id');
+        $unrouted = \App\Modules\Sales\Models\Customer::query()->whereNotIn('id', $onSomeRoute)->pluck('id');
+
+        return $mine->merge($unrouted)->map(fn ($v) => (int) $v)->unique()->values()->all();
     }
 
     /** @return \Illuminate\Support\Collection<int, array{id:int,name:string}> */
@@ -44,7 +52,7 @@ class RepRoutes
         }
     }
 
-    /** A customer a salesperson adds joins that salesperson's routes, so they stay in the rep's list. */
+    /** A customer a van salesman adds joins that van salesman's routes, so they stay in the rep's list. */
     public static function addCustomer(int $userId, int $customerId): void
     {
         foreach (self::routeIds($userId) as $groupId) {

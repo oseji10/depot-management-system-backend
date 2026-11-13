@@ -60,6 +60,12 @@ class Permissions
     }
 
     /** Starting-point roles copied into every new store. Stores can edit them or add their own. */
+    /** The hidden key a standard role is recognised by, whatever it is later renamed to. */
+    public static function roleKey(string $name): string
+    {
+        return in_array($name, ['Van Salesman', 'Field Sales'], true) ? 'van_salesman' : \Illuminate\Support\Str::slug($name, '_');
+    }
+
     public static function roleTemplates(): array
     {
         $all = self::all();
@@ -84,7 +90,7 @@ class Permissions
             'Sales Cashier' => [
                 'branches.view', 'warehouses.view', 'products.view', 'inventory.view', 'customers.view', 'customers.manage', 'sales.view', 'sales.create', 'containers.view', 'containers.manage', 'proformas.view', 'proformas.manage',
             ],
-            // Salespersons and drivers. They can only sell from their own van, and only see their own sales.
+            // Van salesmen and drivers. They can only sell from their own van, and only see their own sales.
             'Van Salesman' => ['products.view', 'customers.view', 'customers.manage', 'sales.view', 'sales.create', 'expenses.view', 'expenses.create', 'proformas.view', 'proformas.manage'],
             'Warehouse Officer' => [
                 'warehouses.view', 'products.view', 'inventory.view', 'inventory.transfer', 'inventory.count', 'containers.view', 'containers.manage',

@@ -14,7 +14,10 @@ trait StoreLevelOnly
     {
         $access = app(AccessScope::class);
 
-        abort_if($access->isBranchRestricted() && ! $access->isSuperAdmin(), 403, 'Accounting is only available to store-level users.');
+        abort_if($access->isBranchLocked(), 403, 'Accounting is only available to head-office users.');
+
+        // The books are for the whole business: an owner who picked one branch in the switcher still sees every entry.
+        $access->widenToWholeBusiness();
 
         return $access->requireStoreId();
     }

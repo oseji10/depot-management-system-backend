@@ -19,13 +19,13 @@ class Warehouse extends Model
         return ['is_default' => 'boolean', 'is_active' => 'boolean'];
     }
 
-    /** The van that belongs to this user, if they are a salesperson. Not scoped: used while checking who may sell. */
+    /** The van that belongs to this user, if they are a van salesman. Not scoped: used while checking who may sell. */
     public static function vanOf(int $userId): ?self
     {
         return static::withoutGlobalScopes()->where('type', 'van')->where('assigned_user_id', $userId)->first();
     }
 
-    /** A salesperson's van: stock held in their custody, sold only by them. */
+    /** A van salesman's van: stock held in their custody, sold only by them. */
     public function isVan(): bool
     {
         return $this->type === 'van';

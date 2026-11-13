@@ -80,7 +80,7 @@ class EmployeeController extends Controller
         return response()->json($employee);
     }
 
-    /** Put an existing login (a salesperson, driver, cashier...) on the payroll as an employee. */
+    /** Put an existing login (a van salesman, driver, cashier...) on the payroll as an employee. */
     public function fromUser(Request $request): JsonResponse
     {
         $storeId = $this->access->requireStoreId();

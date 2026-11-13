@@ -127,7 +127,7 @@ class UserController extends Controller
             }
 
             // Only store-level actors may move a user between branches.
-            if (array_key_exists('branch_id', $data) && ! $this->access->isBranchRestricted()) {
+            if (array_key_exists('branch_id', $data) && ! $this->access->isBranchLocked()) {
                 $fill['branch_id'] = $this->resolveBranchId($data['branch_id']);
             }
 
@@ -180,7 +180,7 @@ class UserController extends Controller
             return;
         }
 
-        abort_if($role->name === 'Owner' && ! $actor->hasRole('Owner'), 403, 'Only an owner can assign the Owner role.');
+        abort_if($role->system_key === 'owner' && ! $actor->isOwner(), 403, 'Only an owner can assign the Owner role.');
 
         $missing = $role->permissions->pluck('name')->diff($actor->getAllPermissions()->pluck('name'));
         abort_if($missing->isNotEmpty(), 403, 'You cannot assign a role with permissions you do not have.');
@@ -195,7 +195,7 @@ class UserController extends Controller
         }
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($target->store_id);
-        abort_if($target->hasRole('Owner') && ! $actor->hasRole('Owner'), 403, 'Only an owner can change an owner.');
+        abort_if($target->isOwner() && ! $actor->isOwner(), 403, 'Only an owner can change an owner.');
     }
 
     /** Spatie's roles relation is team-filtered per request, so read names straight from the pivot for lists. */

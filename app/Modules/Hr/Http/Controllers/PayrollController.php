@@ -101,7 +101,8 @@ class PayrollController extends Controller
 
     private function storeLevel(): int
     {
-        abort_if($this->access->isBranchRestricted(), 403, 'Payroll is handled at head-office level.');
+        abort_if($this->access->isBranchLocked(), 403, 'Payroll is handled at head-office level.');
+        $this->access->widenToWholeBusiness();
 
         return $this->access->requireStoreId();
     }

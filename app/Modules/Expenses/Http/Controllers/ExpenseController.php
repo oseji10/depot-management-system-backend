@@ -81,7 +81,7 @@ class ExpenseController extends Controller
         return response()->json(null, 204);
     }
 
-    /** Salespeople see only what they logged themselves. */
+    /** Van Salesmen see only what they logged themselves. */
     private function visible(): Builder
     {
         $user = request()->user();

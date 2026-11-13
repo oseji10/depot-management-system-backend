@@ -159,6 +159,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('products', [ProductController::class, 'index'])->middleware('can:products.view');
         Route::post('products', [ProductController::class, 'store'])->middleware('can:products.manage');
+        Route::post('products/bulk-unit', [ProductController::class, 'bulkUnit'])->middleware('can:products.manage');
         Route::get('products/history', [ProductController::class, 'ledger'])->middleware('can:inventory.view');
         Route::get('products/{id}', [ProductController::class, 'show'])->middleware('can:products.view');
         Route::put('products/{id}', [ProductController::class, 'update'])->middleware('can:products.manage');

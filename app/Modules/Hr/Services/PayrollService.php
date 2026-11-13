@@ -231,7 +231,7 @@ class PayrollService
             $lines[] = ['earning', 'pay_item', $item->id, $item->name, $item->amountFor($basic, $overrides[$item->id] ?? null)];
         }
 
-        // Sales rewards are not basic pay: each product's reward is its own earning line, for staff who have a salesperson login.
+        // Sales rewards are not basic pay: each product's reward is its own earning line, for staff who have a van salesman login.
         if ($employee->user_id) {
             $run = PayrollRun::find($slip->payroll_run_id);
 

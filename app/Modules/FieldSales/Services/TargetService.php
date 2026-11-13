@@ -8,7 +8,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Monthly sales targets per salesperson and product, with a reward for reaching them. At or above the top level the whole
+ * Monthly sales targets per van salesman and product, with a reward for reaching them. At or above the top level the whole
  * reward is paid; at a lower level a smaller share; below every level, nothing. Levels are set by the business.
  * Rewards are not part of basic pay: payroll adds them to the payslip as their own earning lines.
  */
@@ -114,7 +114,7 @@ class TargetService
     }
 
     /**
-     * Current basic salary (kobo) of each salesperson who is on the staff list.
+     * Current basic salary (kobo) of each van salesman who is on the staff list.
      *
      * @param  list<int>  $userIds
      * @return array<int, int>
@@ -125,7 +125,7 @@ class TargetService
     }
 
     /**
-     * Money each salesperson sold in the month (all products), less the value of what customers returned.
+     * Money each van salesman sold in the month (all products), less the value of what customers returned.
      *
      * @param  list<int>  $userIds
      * @return array<int, int> [user] => kobo
@@ -153,7 +153,7 @@ class TargetService
     }
 
     /**
-     * Base units each salesperson sold of each product in the month, less what customers returned from those sales in it.
+     * Base units each van salesman sold of each product in the month, less what customers returned from those sales in it.
      *
      * @param  list<int>  $userIds
      * @return array<int, array<int, int>> [user][product] => base units
@@ -189,7 +189,7 @@ class TargetService
     }
 
     /**
-     * The earning lines payroll for `$payrollPeriod` adds to a salesperson's payslip.
+     * The earning lines payroll for `$payrollPeriod` adds to a van salesman's payslip.
      *
      * @return list<array{id:int,label:string,amount:int}>
      */
@@ -210,7 +210,7 @@ class TargetService
         return $lines;
     }
 
-    /** A salesperson's own view of the month. */
+    /** A van salesman's own view of the month. */
     public function mine(User $user, string $period): array
     {
         return $this->progress($user->store_id, $period, $user->id)[0] ?? ['user_id' => $user->id, 'name' => $user->name, 'targets' => [], 'reward_total' => 0, 'reward_full' => 0];

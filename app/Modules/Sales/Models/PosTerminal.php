@@ -45,7 +45,7 @@ class PosTerminal extends Model
     }
 
     /**
-     * Terminals a user may take a card payment on at a branch. A person who has been handed a machine (a salesperson on a trip)
+     * Terminals a user may take a card payment on at a branch. A person who has been handed a machine (a van salesman on a trip)
      * uses only that one. Everyone else uses the branch's (or any-branch) machines that nobody is carrying.
      */
     public function scopeUsableAt(Builder $q, ?int $branchId, int $userId): Builder
