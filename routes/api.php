@@ -446,5 +446,5 @@ Route::prefix('v1')->group(function () {
         Route::post('rebate-calculations/{id}/approve', [RebateCalculationController::class, 'approve'])->middleware('can:rebates.approve');
         Route::post('rebate-calculations/{id}/void', [RebateCalculationController::class, 'void'])->middleware('can:rebates.calculate');
         Route::post('rebate-calculations/{id}/settle', [RebateCalculationController::class, 'settle'])->middleware('can:rebates.settle');
-    });
+    }); 
 });
