@@ -72,10 +72,12 @@ class ReturnService
             $refund = $total - $applied;
             $method = $data['refund_method'] ?? null;
 
-            if ($refund > 0 && ! in_array($method, ['cash', 'transfer'], true)) {
-                throw ValidationException::withMessages(['refund_method' => sprintf('%s must be handed back. Choose cash or transfer.', number_format($refund / 100, 2))]);
+            if ($refund > 0 && ! in_array($method, ['cash', 'transfer', 'exchange'], true)) {
+                throw ValidationException::withMessages(['refund_method' => sprintf('%s must be handed back. Choose cash, transfer or exchange.', number_format($refund / 100, 2))]);
             }
 
+            // An exchange hands no money back: the value stays as credit on the customer's account for the replacement goods.
+            $exchange = $refund > 0 && $method === 'exchange';
             $warehouse = $this->shelf($sale);
             $status = ($data['restock_status'] ?? 'saleable') === 'damaged' ? 'damaged' : 'saleable';
 
@@ -83,7 +85,7 @@ class ReturnService
                 'store_id' => $sale->store_id, 'branch_id' => $sale->branch_id, 'warehouse_id' => $warehouse->id, 'sale_id' => $sale->id,
                 'customer_id' => $sale->customer_id, 'number' => $this->numbers->next($sale->store_id, 'CN'), 'returned_at' => now(),
                 'reason' => $data['reason'], 'restock_status' => $status, 'total' => $total, 'cogs_back' => $cogs,
-                'applied_to_balance' => $applied, 'refunded' => $refund, 'refund_method' => $refund > 0 ? $method : null, 'created_by' => $actor->id,
+                'applied_to_balance' => $applied, 'refunded' => $exchange ? 0 : $refund, 'exchange_credit' => $exchange ? $refund : 0, 'refund_method' => $refund > 0 ? $method : null, 'created_by' => $actor->id,
             ]);
 
             foreach ($picked as $k => [$line, $qty, $value, $cost]) {

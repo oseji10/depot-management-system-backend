@@ -21,7 +21,7 @@ class WarehouseController extends Controller
     {
         $warehouses = Warehouse::query()
             ->with('branch:id,name')
-            // Vans are managed under Field sales; they stay out of every ordinary warehouse list.
+            // Vans are managed under Van sales; they stay out of every ordinary warehouse list.
             ->when($request->query('type') !== 'all', fn ($q) => $q->where('type', 'standard'))
             ->when($request->query('branch_id'), fn ($q, $id) => $q->where('branch_id', $id))
             ->when($request->query('search'), fn ($q, $s) => $q->where(

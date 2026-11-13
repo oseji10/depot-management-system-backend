@@ -45,10 +45,10 @@ class TripService
 
             app(PermissionRegistrar::class)->setPermissionsTeamId($storeId);
 
-            $role = Role::firstOrCreate(['name' => 'Field Sales', 'guard_name' => 'web', 'store_id' => $storeId]);
+            $role = Role::firstOrCreate(['name' => 'Van Salesman', 'guard_name' => 'web', 'store_id' => $storeId]);
 
             if ($role->wasRecentlyCreated) {
-                $role->syncPermissions(Permissions::roleTemplates()['Field Sales']);
+                $role->syncPermissions(Permissions::roleTemplates()['Van Salesman']);
             }
 
             $user = User::create([

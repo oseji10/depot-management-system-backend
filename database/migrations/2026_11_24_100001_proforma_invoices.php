@@ -15,7 +15,7 @@ return new class extends Migration {
         'Administrator' => ['proformas.view', 'proformas.manage'],
         'Depot Manager' => ['proformas.view', 'proformas.manage'],
         'Sales Cashier' => ['proformas.view', 'proformas.manage'],
-        'Field Sales' => ['proformas.view', 'proformas.manage'],
+        'Van Salesman' => ['proformas.view', 'proformas.manage'],
         'Accountant' => ['proformas.view'],
         'Auditor' => ['proformas.view'],
     ];

@@ -16,6 +16,12 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Email goes through Brevo's HTTP API whenever BREVO_API_KEY is set; otherwise the normal MAIL_* settings apply.
+        \Illuminate\Support\Facades\Mail::extend('brevo', fn () => new \App\Mail\BrevoTransport((string) config('depot.brevo.key'), (int) config('depot.brevo.timeout', 10)));
+        if (config('depot.brevo.key')) {
+            config(['mail.mailers.brevo' => ['transport' => 'brevo'], 'mail.default' => 'brevo']);
+        }
+
         // Super admins pass every permission check.
         Gate::before(function (User $user, string $ability) {
             if ($user->is_super_admin) {

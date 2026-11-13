@@ -116,7 +116,7 @@ class SaleController extends Controller
     {
         return $this->visible()->with([
             ...self::WITH, 'lines.product:id,name,sku,size_label', 'lines.unit:id,name',
-            'payments.receiver:id,name', 'payments.terminal:id,name', 'payments.account:id,code,name', 'returns:id,sale_id,number,returned_at,total,applied_to_balance,refunded,refund_method',
+            'payments.receiver:id,name', 'payments.terminal:id,name', 'payments.account:id,code,name', 'returns:id,sale_id,number,returned_at,total,applied_to_balance,refunded,exchange_credit,refund_method',
         ])->findOrFail($id);
     }
 

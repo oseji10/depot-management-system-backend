@@ -325,7 +325,7 @@ class SaleService
 
     /**
      * Resolves each line to a price in kobo. The list price is the effective price for that unit today;
-     * a lower price is a discount and needs permission. A higher price is not allowed.
+     * a lower price is a discount and needs permission. A higher price is not allowed (except a proforma being converted).
      */
     private function priceLines(array $input, User $actor, array $opts = []): array
     {
@@ -354,11 +354,19 @@ class SaleService
                 }
             }
 
+            // A proforma the customer accepted is honoured as quoted: a price above the list (a rebate partner) is treated as that
+            // line's price, and one below it was already authorised when the quote was made.
+            $honour = ($opts['honour_quote'] ?? false) && isset($l['unit_price']);
+
+            if ($honour && $charged > $list) {
+                $list = $charged;
+            }
+
             if ($charged > $list) {
                 throw ValidationException::withMessages(["lines.$i.unit_price" => 'The price cannot be higher than the list price.']);
             }
 
-            if ($charged < $list && ! $actor->can('sales.discount')) {
+            if ($charged < $list && ! $honour && ! $actor->can('sales.discount')) {
                 throw ValidationException::withMessages(["lines.$i.unit_price" => 'You do not have permission to sell below the list price.']);
             }
 

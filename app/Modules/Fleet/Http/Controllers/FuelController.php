@@ -35,10 +35,16 @@ class FuelController extends Controller
         return response()->json($this->station(FuelStation::create([...$data, 'store_id' => $storeId])), 201);
     }
 
-    /** Deleting hides the fuel station (it can be restored). It is refused once anything has used it. */
+    /** Deleting hides the fuel station (it can be restored). It is refused once any voucher has been issued against it. */
     public function destroyStation(int $id): JsonResponse
     {
-        \App\Support\Deletion::remove(\App\Modules\Fleet\Models\FuelStation::findOrFail($id), ['fuel_station_entries' => 'fuel_station_id', 'fuel_vouchers' => 'fuel_station_id'], 'This fuel station');
+        $station = \App\Modules\Fleet\Models\FuelStation::findOrFail($id);
+        abort_if(
+            \Illuminate\Support\Facades\DB::table('fuel_vouchers')->where('fuel_station_id', $station->id)->exists(),
+            422,
+            $station->name.' already has fuel vouchers issued against it, so it cannot be deleted. Switch it off instead (Edit, then untick Active) to stop using it.',
+        );
+        $station->delete();
 
         return response()->json(null, 204);
     }

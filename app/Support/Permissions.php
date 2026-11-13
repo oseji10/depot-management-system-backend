@@ -34,7 +34,7 @@ class Permissions
             'customers.view', 'customers.manage',
             'proformas.view', 'proformas.manage',
         ],
-        'Field sales' => [
+        'Van sales' => [
             'trips.view', 'trips.manage', 'targets.view', 'targets.manage',
         ],
         'Rebates' => [
@@ -85,7 +85,7 @@ class Permissions
                 'branches.view', 'warehouses.view', 'products.view', 'inventory.view', 'customers.view', 'customers.manage', 'sales.view', 'sales.create', 'containers.view', 'containers.manage', 'proformas.view', 'proformas.manage',
             ],
             // Salespersons and drivers. They can only sell from their own van, and only see their own sales.
-            'Field Sales' => ['products.view', 'customers.view', 'customers.manage', 'sales.view', 'sales.create', 'expenses.view', 'expenses.create', 'proformas.view', 'proformas.manage'],
+            'Van Salesman' => ['products.view', 'customers.view', 'customers.manage', 'sales.view', 'sales.create', 'expenses.view', 'expenses.create', 'proformas.view', 'proformas.manage'],
             'Warehouse Officer' => [
                 'warehouses.view', 'products.view', 'inventory.view', 'inventory.transfer', 'inventory.count', 'containers.view', 'containers.manage',
                 'purchasing.view', 'goods-receipts.view', 'goods-receipts.record', 'trips.view', 'trips.manage',

@@ -39,8 +39,8 @@ return new class extends Migration {
                 Role::where('store_id', $store->id)->where('name', $roleName)->first()?->givePermissionTo($permissions);
             }
 
-            $role = Role::firstOrCreate(['name' => 'Field Sales', 'guard_name' => 'web', 'store_id' => $store->id]);
-            $role->syncPermissions(Permissions::roleTemplates()['Field Sales']);
+            $role = Role::firstOrCreate(['name' => 'Van Salesman', 'guard_name' => 'web', 'store_id' => $store->id]);
+            $role->syncPermissions(Permissions::roleTemplates()['Van Salesman']);
         }
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();

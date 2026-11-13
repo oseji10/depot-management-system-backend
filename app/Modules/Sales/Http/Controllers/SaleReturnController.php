@@ -53,7 +53,7 @@ class SaleReturnController extends Controller
         $data = $request->validate([
             'reason' => ['required', 'string', 'max:255'],
             'restock_status' => ['sometimes', Rule::in(['saleable', 'damaged'])],
-            'refund_method' => ['nullable', Rule::in(['cash', 'transfer'])],
+            'refund_method' => ['nullable', Rule::in(['cash', 'transfer', 'exchange'])],
             'lines' => ['required', 'array', 'min:1', 'max:100'],
             'lines.*.sale_line_id' => ['required', 'integer'],
             'lines.*.quantity' => ['required', 'integer', 'min:1', 'max:100000'],

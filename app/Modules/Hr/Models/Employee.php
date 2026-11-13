@@ -3,18 +3,23 @@
 namespace App\Modules\Hr\Models;
 
 use App\Models\User;
+use App\Modules\Organization\Models\Branch;
 use App\Support\Auditing\Auditable;
+use App\Support\Concerns\SoftDeletesFreeingKeys;
 use App\Support\Tenancy\BelongsToStore;
 use App\Support\Tenancy\BranchScoped;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Employee extends Model
 {
-    use Auditable, BelongsToStore, BranchScoped;
+    use Auditable, BelongsToStore, BranchScoped, SoftDeletesFreeingKeys;
 
     protected $guarded = [];
+
+    protected array $freedOnDelete = ['staff_no' => 30];
 
     protected function casts(): array
     {
@@ -24,6 +29,12 @@ class Employee extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** Every branch this person works in (the employee's own branch_id is the main one). */
+    public function branches(): BelongsToMany
+    {
+        return $this->belongsToMany(Branch::class, 'employee_branches')->select(['branches.id', 'branches.name']);
     }
 
     public function payItems(): HasMany

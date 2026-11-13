@@ -38,7 +38,7 @@ return new class extends Migration {
                 Role::where('store_id', $store->id)->where('name', $roleName)->first()?->givePermissionTo($permissions);
             }
 
-            Role::where('store_id', $store->id)->where('name', 'Field Sales')->first()?->syncPermissions(Permissions::roleTemplates()['Field Sales']);
+            Role::where('store_id', $store->id)->where('name', 'Van Salesman')->first()?->syncPermissions(Permissions::roleTemplates()['Van Salesman']);
 
             app(ExpenseDefaults::class)->seed($store->id);
         }

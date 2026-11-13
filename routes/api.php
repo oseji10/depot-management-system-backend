@@ -159,9 +159,11 @@ Route::prefix('v1')->group(function () {
 
         Route::get('products', [ProductController::class, 'index'])->middleware('can:products.view');
         Route::post('products', [ProductController::class, 'store'])->middleware('can:products.manage');
+        Route::get('products/history', [ProductController::class, 'ledger'])->middleware('can:inventory.view');
         Route::get('products/{id}', [ProductController::class, 'show'])->middleware('can:products.view');
         Route::put('products/{id}', [ProductController::class, 'update'])->middleware('can:products.manage');
         Route::delete('products/{id}', [ProductController::class, 'destroy'])->middleware('can:products.manage');
+        Route::get('products/{id}/history', [ProductController::class, 'history'])->middleware('can:inventory.view');
         Route::get('products/{id}/image', [ProductController::class, 'image'])->middleware('can:products.view');
         Route::post('products/{id}/image', [ProductController::class, 'uploadImage'])->middleware('can:products.manage');
         Route::delete('products/{id}/image', [ProductController::class, 'removeImage'])->middleware('can:products.manage');
@@ -285,6 +287,9 @@ Route::prefix('v1')->group(function () {
         Route::get('employees/{id}', [EmployeeController::class, 'show'])->middleware('can:employees.view');
         Route::post('employees', [EmployeeController::class, 'store'])->middleware('can:employees.manage');
         Route::put('employees/{id}', [EmployeeController::class, 'update'])->middleware('can:employees.manage');
+        Route::post('employees/{id}/archive', [EmployeeController::class, 'archive'])->middleware('can:employees.manage');
+        Route::post('employees/{id}/unarchive', [EmployeeController::class, 'unarchive'])->middleware('can:employees.manage');
+        Route::delete('employees/{id}', [EmployeeController::class, 'destroy'])->middleware('can:employees.manage');
 
         Route::get('pay-items', [PayItemController::class, 'index'])->middleware('can:employees.view');
         Route::post('pay-items', [PayItemController::class, 'store'])->middleware('can:payroll.manage');

@@ -72,7 +72,7 @@ class ProformaController extends Controller
         $proforma = DB::transaction(function () use ($data, $lines, $totals, $numbers, $request, $storeId) {
             $proforma = Proforma::create([
                 ...$data, ...$totals, 'store_id' => $storeId, 'branch_id' => $request->user()->branch_id, 'number' => $numbers->next($storeId, 'PRO'),
-                'status' => 'draft', 'created_by' => $request->user()->id,
+                'issued_on' => $data['issued_on'] ?? now()->toDateString(), 'status' => 'draft', 'created_by' => $request->user()->id,
             ]);
 
             foreach ($lines as $line) {
@@ -118,7 +118,7 @@ class ProformaController extends Controller
 
     /**
      * Turn the quote into a sale from a warehouse. With no payments it is a credit sale (the customer must be on file); with
-     * payments, the same rules as the till apply. The quoted prices are kept unless the price list has since gone below them.
+     * payments, the same rules as the till apply. The sale uses the quoted prices exactly, even when they are above the list (rebate partners).
      */
     public function convert(Request $request, int $id, SaleService $sales): JsonResponse
     {
@@ -142,7 +142,7 @@ class ProformaController extends Controller
             $unit = ($units[$l->product_id] ?? collect())->firstWhere('unit_id', $l->unit_id);
             $list = $unit && isset($effective[$unit->id]) ? Money::kobo($effective[$unit->id]['price']) : null;
 
-            return ['product_id' => $l->product_id, 'unit_id' => $l->unit_id, 'quantity' => $l->quantity, 'unit_price' => $list === null ? $l->unit_price : min($l->unit_price, $list)];
+            return ['product_id' => $l->product_id, 'unit_id' => $l->unit_id, 'quantity' => $l->quantity, 'unit_price' => $l->unit_price];
         })->values()->all();
 
         if (empty($data['payments']) && $proforma->customer_id === null) {
@@ -152,7 +152,7 @@ class ProformaController extends Controller
         $sale = $sales->create([
             'warehouse_id' => $data['warehouse_id'], 'customer_id' => $proforma->customer_id, 'channel' => 'counter',
             'note' => 'From proforma '.$proforma->number, 'lines' => $lines, 'payments' => $data['payments'] ?? [],
-        ], $request->user());
+        ], $request->user(), ['honour_quote' => true]);
 
         $proforma->update(['status' => 'converted', 'converted_sale_id' => $sale->id]);
 
@@ -178,8 +178,8 @@ class ProformaController extends Controller
             'customer_phone' => ['nullable', 'string', 'max:30'],
             'customer_email' => ['nullable', 'email', 'max:150'],
             'customer_address' => ['nullable', 'string', 'max:255'],
-            'issued_on' => ['required', 'date_format:Y-m-d'],
-            'valid_until' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:issued_on'],
+            'issued_on' => ['nullable', 'date_format:Y-m-d'],
+            'valid_until' => ['nullable', 'date_format:Y-m-d'],
             'discount' => ['nullable', 'integer', 'min:0', 'max:100000000000'],
             'delivery_fee' => ['nullable', 'integer', 'min:0', 'max:100000000000'],
             'notes' => ['nullable', 'string', 'max:1000'],
@@ -210,10 +210,6 @@ class ProformaController extends Controller
             $unit = ($units[$product->id] ?? collect())->firstWhere('unit_id', $l['unit_id'])
                 ?? throw ValidationException::withMessages(["lines.$i.unit_id" => "{$product->name} is not sold in that unit."]);
             $list = isset($effective[$unit->id]) ? Money::kobo($effective[$unit->id]['price']) : throw ValidationException::withMessages(["lines.$i.unit_id" => "{$product->name} has no price for that unit. Set it in a price list."]);
-
-            if ($l['unit_price'] > $list) {
-                throw ValidationException::withMessages(["lines.$i.unit_price" => 'The price cannot be higher than the list price.']);
-            }
 
             if ($l['unit_price'] < $list && ! $actor->can('sales.discount')) {
                 throw ValidationException::withMessages(["lines.$i.unit_price" => 'You do not have permission to quote below the list price.']);

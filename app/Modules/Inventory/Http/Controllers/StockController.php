@@ -45,9 +45,10 @@ class StockController extends Controller
         $products = Product::with(['category:id,name', 'baseUnit:id,name'])->whereIn('id', $rows->pluck('product_id'))->get()->keyBy('id');
         $warehouses = Warehouse::whereIn('id', $rows->pluck('warehouse_id'))->get(['id', 'name'])->keyBy('id');
         $packs = $this->largestPacks($rows->pluck('product_id')->all());
+        $allPacks = $this->allPacks($rows->pluck('product_id')->all());
         $levels = ReorderLevel::whereIn('product_id', $rows->pluck('product_id'))->get()->keyBy(fn ($r) => "{$r->warehouse_id}:{$r->product_id}");
 
-        $paginator->setCollection($rows->map(function ($r) use ($products, $warehouses, $packs, $levels) {
+        $paginator->setCollection($rows->map(function ($r) use ($products, $warehouses, $packs, $allPacks, $levels) {
             $p = $products[$r->product_id];
             $level = $levels["{$r->warehouse_id}:{$r->product_id}"]->min_quantity ?? null;
 
@@ -55,7 +56,7 @@ class StockController extends Controller
                 'warehouse' => $warehouses[$r->warehouse_id],
                 'product' => [
                     'id' => $p->id, 'name' => $p->name, 'sku' => $p->sku, 'size_label' => $p->size_label,
-                    'category' => $p->category?->name, 'base_unit' => $p->baseUnit?->name, 'pack' => $packs[$p->id] ?? null,
+                    'category' => $p->category?->name, 'base_unit' => $p->baseUnit?->name, 'pack' => $packs[$p->id] ?? null, 'packs' => $allPacks[$p->id] ?? [],
                 ],
                 'saleable' => (int) $r->saleable, 'damaged' => (int) $r->damaged, 'expired' => (int) $r->expired, 'total' => (int) $r->total,
                 'reorder_level' => $level,
@@ -186,6 +187,17 @@ class StockController extends Controller
             ->groupBy('product_id')
             ->map(fn ($units) => $units->sortByDesc('factor')->first())
             ->map(fn ($u) => ['name' => $u->unit->name, 'factor' => $u->factor])
+            ->all();
+    }
+
+    /** Every active variation bigger than one bottle/can, biggest first, so stock can read "2 crates + 1 half pack + 3 bottles". */
+    private function allPacks(array $productIds): array
+    {
+        return ProductUnit::query()
+            ->whereIn('product_id', $productIds)->where('is_active', true)->where('is_base', false)
+            ->with('unit:id,name')->get()
+            ->groupBy('product_id')
+            ->map(fn ($units) => $units->sortByDesc('factor')->map(fn ($u) => ['name' => $u->unit->name, 'factor' => $u->factor])->values()->all())
             ->all();
     }
 }
