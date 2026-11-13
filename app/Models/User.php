@@ -55,6 +55,12 @@ class User extends Authenticatable
         return $this->belongsTo(Branch::class);
     }
 
+    /** Every branch this login may work in (their main branch included). */
+    public function branches(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Branch::class, 'user_branches')->withTimestamps();
+    }
+
     /**
      * Users have no global scope (the auth guard loads them, which would recurse),
      * so every user query made on behalf of an actor MUST go through this scope.
@@ -69,8 +75,9 @@ class User extends Authenticatable
             $query->whereRaw('1 = 0');
         }
 
-        if ($access->branchId() !== null) {
-            $query->where('users.branch_id', $access->branchId());
+        if (($branchId = $access->branchId()) !== null) {
+            $query->where(fn ($q) => $q->where('users.branch_id', $branchId)
+                ->when(AccessScope::hasUserBranches(), fn ($w) => $w->orWhereIn('users.id', \Illuminate\Support\Facades\DB::table('user_branches')->where('branch_id', $branchId)->select('user_id'))));
         }
 
         return $query;

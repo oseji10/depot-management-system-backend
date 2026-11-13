@@ -82,7 +82,10 @@ class AccessScope
         }
 
         if ($this->lockedBranchOf($user)) {
-            return $user->branch_id;
+            // A login with several branches works in one at a time: the one picked in the switcher, else their main branch.
+            $picked = $this->headerInt('X-Branch-Id');
+
+            return $picked && in_array($picked, $this->allowedBranches($user), true) ? $picked : $user->branch_id;
         }
 
         // A store-level user (owner, manager) may narrow the whole app to one branch of their own business.
@@ -111,8 +114,13 @@ class AccessScope
         $user = Auth::user();
         $id = $user ? $this->headerInt('X-Warehouse-Id') : null;
 
-        if (! $id || ! $user->store_id || $user->is_super_admin || $this->lockedBranchOf($user)) {
+        if (! $id || ! $user->store_id || $user->is_super_admin) {
             return null;
+        }
+
+        // A branch user may narrow to a warehouse of the branch they are working in, nothing else.
+        if ($this->lockedBranchOf($user)) {
+            return \Illuminate\Support\Facades\DB::table('warehouses')->where('id', $id)->where('branch_id', $this->branchId())->exists() ? $id : null;
         }
 
         $this->warehouseChecks["{$user->store_id}:{$id}"] ??= \Illuminate\Support\Facades\DB::table('warehouses')->where('id', $id)->where('store_id', $user->store_id)->exists();
@@ -127,6 +135,28 @@ class AccessScope
     private function lockedBranchOf($user): bool
     {
         return $this->lockedChecks[$user->id] ??= (bool) $user->branch_id && ! $this->isOwnerOf($user);
+    }
+
+    /** @var array<int, list<int>> */
+    private array $allowedCache = [];
+
+    /** Branch ids a branch-bound login may work in: their main branch plus any extra ones, active and in their business. */
+    public function allowedBranches($user): array
+    {
+        $extra = self::hasUserBranches();
+
+        return $this->allowedCache[$user->id] ??= \Illuminate\Support\Facades\DB::table('branches')
+            ->where('store_id', $user->store_id)->where('is_active', true)->whereNull('deleted_at')
+            ->where(fn ($q) => $q->where('id', $user->branch_id)->when($extra, fn ($w) => $w->orWhereIn('id', \Illuminate\Support\Facades\DB::table('user_branches')->where('user_id', $user->id)->select('branch_id'))))
+            ->orderBy('name')->pluck('id')->map(fn ($v) => (int) $v)->all();
+    }
+
+    /** True once the user_branches migration has run (so uploading code before migrating never breaks sign-in). */
+    public static function hasUserBranches(): bool
+    {
+        static $has = null;
+
+        return $has ??= \Illuminate\Support\Facades\Schema::hasTable('user_branches');
     }
 
     private function isOwnerOf($user): bool

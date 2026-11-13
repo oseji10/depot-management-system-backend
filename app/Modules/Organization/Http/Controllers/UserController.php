@@ -22,8 +22,8 @@ class UserController extends Controller
     public function index(Request $request): JsonResponse
     {
         $users = User::query()->visibleToActor()
-            ->with(['branch:id,name', 'store:id,name'])
-            ->when($request->query('branch_id'), fn ($q, $id) => $q->where('users.branch_id', $id))
+            ->with(AccessScope::hasUserBranches() ? ['branch:id,name', 'branches:id,name', 'store:id,name'] : ['branch:id,name', 'store:id,name'])
+            ->when($request->query('branch_id'), fn ($q, $id) => $q->where(fn ($w) => $w->where('users.branch_id', $id)->when(AccessScope::hasUserBranches(), fn ($x) => $x->orWhereIn('users.id', DB::table('user_branches')->where('branch_id', $id)->select('user_id')))))
             ->when($request->query('search'), fn ($q, $s) => $q->where(
                 fn ($w) => $w->where('users.name', 'like', "%{$s}%")->orWhere('users.email', 'like', "%{$s}%")
             ))
@@ -37,7 +37,7 @@ class UserController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $user = $this->find($id)->load(['branch:id,name', 'store:id,name']);
+        $user = $this->find($id)->load(AccessScope::hasUserBranches() ? ['branch:id,name', 'branches:id,name', 'store:id,name'] : ['branch:id,name', 'store:id,name']);
         $this->attachRoles(collect([$user]));
 
         return response()->json($user);
@@ -54,6 +54,8 @@ class UserController extends Controller
             'password' => ['required', Password::min(8)],
             'role_id' => ['required', 'integer'],
             'branch_id' => ['nullable', 'integer'],
+            'branch_ids' => ['sometimes', 'array', 'max:50'],
+            'branch_ids.*' => ['integer'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
@@ -61,11 +63,15 @@ class UserController extends Controller
         $this->assertCanAssign($role);
 
         $user = DB::transaction(function () use ($data, $role, $storeId) {
+            $branchIds = $this->resolveBranchIds($data);
             $user = User::create([
-                ...collect($data)->except(['role_id', 'branch_id'])->all(),
+                ...collect($data)->except(['role_id', 'branch_id', 'branch_ids'])->all(),
                 'store_id' => $storeId,
-                'branch_id' => $this->resolveBranchId($data['branch_id'] ?? null),
+                'branch_id' => $branchIds[0] ?? null,
             ]);
+            if (AccessScope::hasUserBranches()) {
+                $user->branches()->sync($branchIds);
+            }
 
             app(PermissionRegistrar::class)->setPermissionsTeamId($storeId);
             $user->assignRole($role);
@@ -110,6 +116,8 @@ class UserController extends Controller
             'password' => ['nullable', Password::min(8)],
             'role_id' => ['sometimes', 'integer'],
             'branch_id' => ['nullable', 'integer'],
+            'branch_ids' => ['sometimes', 'array', 'max:50'],
+            'branch_ids.*' => ['integer'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
@@ -120,18 +128,27 @@ class UserController extends Controller
         }
 
         DB::transaction(function () use ($user, $data) {
-            $fill = collect($data)->except(['role_id', 'branch_id', 'password'])->all();
+            $fill = collect($data)->except(['role_id', 'branch_id', 'branch_ids', 'password'])->all();
 
             if (! empty($data['password'])) {
                 $fill['password'] = $data['password'];
             }
 
-            // Only store-level actors may move a user between branches.
-            if (array_key_exists('branch_id', $data) && ! $this->access->isBranchLocked()) {
-                $fill['branch_id'] = $this->resolveBranchId($data['branch_id']);
+            // Only head-office actors move a user between branches. The first branch is their main one; none = every branch.
+            $branchIds = null;
+            if ((array_key_exists('branch_ids', $data) || array_key_exists('branch_id', $data)) && ! $this->access->isBranchLocked()) {
+                $branchIds = $this->resolveBranchIds($data);
+                $fill['branch_id'] = $branchIds[0] ?? null;
             }
 
             $user->update($fill);
+
+            if ($branchIds !== null) {
+                if (AccessScope::hasUserBranches()) {
+                    $user->branches()->sync($branchIds);
+                }
+                DB::table('user_stores')->where('user_id', $user->id)->where('store_id', $user->store_id)->update(['branch_id' => $branchIds[0] ?? null]);
+            }
 
             if (isset($data['role_id'])) {
                 $role = $this->roleInStore($data['role_id'], $user->store_id);
@@ -154,6 +171,30 @@ class UserController extends Controller
     private function find(int $id): User
     {
         return User::query()->visibleToActor()->findOrFail($id);
+    }
+
+    /**
+     * The branches a user works in, main branch first. Empty means the whole business (head office).
+     * A branch-bound actor can only hand out branches they work in themselves, and never "the whole business".
+     *
+     * @return list<int>
+     */
+    private function resolveBranchIds(array $data): array
+    {
+        $ids = array_key_exists('branch_ids', $data)
+            ? array_values(array_unique(array_map('intval', $data['branch_ids'] ?? [])))
+            : (! empty($data['branch_id']) ? [(int) $data['branch_id']] : []);
+
+        $ids = array_map(fn ($id) => Branch::findOrFail($id)->id, $ids);
+
+        if ($this->access->isBranchLocked()) {
+            $mine = $this->access->allowedBranches(request()->user());
+            $ids = array_values(array_intersect($ids, $mine));
+
+            return $ids ?: [$this->access->branchId()];
+        }
+
+        return $ids;
     }
 
     /** A branch-level actor always creates users in their own branch; otherwise the branch must be visible. */

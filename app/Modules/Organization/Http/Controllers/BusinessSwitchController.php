@@ -79,9 +79,23 @@ class BusinessSwitchController extends Controller
     public function scopes(Request $request): JsonResponse
     {
         $user = $request->user();
-        abort_if($user->is_super_admin || $user->branch_id || ! $user->store_id, 403, 'Only business-wide users can switch branch.');
+        abort_if($user->is_super_admin || ! $user->store_id, 403, 'Only business users can switch branch.');
+
+        $access = app(\App\Support\Tenancy\AccessScope::class);
+
+        // A login tied to branches picks among its own branches only.
+        if ($access->isBranchLocked()) {
+            $ids = $access->allowedBranches($user);
+
+            return response()->json([
+                'locked' => true,
+                'branches' => DB::table('branches')->whereIn('id', $ids)->orderBy('name')->get(['id', 'name']),
+                'warehouses' => DB::table('warehouses')->whereIn('branch_id', $ids)->where('is_active', true)->where('type', '!=', 'van')->orderBy('name')->get(['id', 'name', 'branch_id']),
+            ]);
+        }
 
         return response()->json([
+            'locked' => false,
             'branches' => DB::table('branches')->where('store_id', $user->store_id)->where('is_active', true)->whereNull('deleted_at')->orderBy('name')->get(['id', 'name']),
             'warehouses' => DB::table('warehouses')->where('store_id', $user->store_id)->where('is_active', true)->where('type', '!=', 'van')->orderBy('name')->get(['id', 'name', 'branch_id']),
         ]);
