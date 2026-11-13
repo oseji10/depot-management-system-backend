@@ -41,7 +41,8 @@ class User extends Authenticatable
     /** True for the business owner, whatever the Owner role has been renamed to. */
     public function isOwner(): bool
     {
-        return $this->roles->contains(fn ($r) => $r->system_key === 'owner');
+        // Falls back to the name until the system_key migration has run, so an owner never loses access in between.
+        return $this->roles->contains(fn ($r) => ($r->system_key ?? ($r->name === 'Owner' ? 'owner' : null)) === 'owner');
     }
 
     public function store(): BelongsTo

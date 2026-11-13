@@ -33,7 +33,7 @@ class RoleController extends Controller
                 ->map(fn ($r) => [
                     'id' => $r->id,
                     'name' => $r->name,
-                    'is_template' => $r->system_key !== null, 'is_owner' => $r->system_key === 'owner',
+                    'is_template' => $r->system_key !== null || $r->name === 'Owner', 'is_owner' => ($r->system_key ?? ($r->name === 'Owner' ? 'owner' : null)) === 'owner',
                     'permissions' => $r->permissions->pluck('name')->values(),
                 ]);
 
@@ -70,7 +70,7 @@ class RoleController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $role = Role::where('store_id', $this->access->requireStoreId())->findOrFail($id);
-        $isOwner = $role->system_key === 'owner';
+        $isOwner = ($role->system_key ?? ($role->name === 'Owner' ? 'owner' : null)) === 'owner';
 
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:60',

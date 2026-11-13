@@ -180,7 +180,7 @@ class UserController extends Controller
             return;
         }
 
-        abort_if($role->system_key === 'owner' && ! $actor->isOwner(), 403, 'Only an owner can assign the Owner role.');
+        abort_if(($role->system_key ?? ($role->name === 'Owner' ? 'owner' : null)) === 'owner' && ! $actor->isOwner(), 403, 'Only an owner can assign the Owner role.');
 
         $missing = $role->permissions->pluck('name')->diff($actor->getAllPermissions()->pluck('name'));
         abort_if($missing->isNotEmpty(), 403, 'You cannot assign a role with permissions you do not have.');
