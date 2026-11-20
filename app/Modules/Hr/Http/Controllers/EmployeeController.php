@@ -62,9 +62,15 @@ class EmployeeController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $employee = Employee::findOrFail($id);
+        $login = $this->loginChanges($request, $employee);
         $data = $this->validated($request, $employee->store_id, $employee);
+        unset($data['login_email'], $data['login_password']);
 
-        DB::transaction(function () use ($employee, $data) {
+        DB::transaction(function () use ($employee, $data, $login) {
+            if ($login) {
+                $login['user']->update($login['fill']);
+            }
+
             $branchIds = $this->branchIds($data);
             $employee->update([...collect($data)->except(['pay_items', 'branch_ids'])->all(), ...($branchIds ? ['branch_id' => $branchIds[0]] : [])]);
 
@@ -185,6 +191,39 @@ class EmployeeController extends Controller
         }
 
         return $data;
+    }
+
+    /**
+     * The linked login's email and password can be changed from the employee form, by someone allowed to manage users.
+     *
+     * @return array{user: \App\Models\User, fill: array}|null
+     */
+    private function loginChanges(Request $request, Employee $employee): ?array
+    {
+        if (! $request->filled('login_email') && ! $request->filled('login_password')) {
+            return null;
+        }
+
+        abort_unless($employee->user_id, 422, 'This employee has no login. Link one first.');
+        abort_unless($request->user()->can('users.update'), 403, 'You are not allowed to change logins.');
+
+        $user = \App\Models\User::findOrFail($employee->user_id);
+        abort_if($user->isOwner() && ! $request->user()->isOwner(), 403, "Only the owner can change the owner's login.");
+
+        $data = $request->validate([
+            'login_email' => ['nullable', 'email', 'max:150', Rule::unique('users', 'email')->ignore($user->id)],
+            'login_password' => ['nullable', 'string', 'min:8', 'max:100'],
+        ]);
+
+        $fill = [];
+        if (! empty($data['login_email']) && mb_strtolower($data['login_email']) !== mb_strtolower((string) $user->email)) {
+            $fill['email'] = mb_strtolower(trim($data['login_email']));
+        }
+        if (! empty($data['login_password'])) {
+            $fill['password'] = \Illuminate\Support\Facades\Hash::make($data['login_password']);
+        }
+
+        return $fill ? ['user' => $user, 'fill' => $fill] : null;
     }
 
     private function syncItems(Employee $employee, array $items, int $storeId): void
