@@ -10,6 +10,7 @@ use App\Modules\Hr\Models\PayItem;
 use App\Modules\Hr\Models\Payslip;
 use App\Modules\Hr\Models\PayslipLine;
 use App\Modules\Hr\Models\PayrollRun;
+use App\Modules\Hr\Models\OvertimeEntry;
 use App\Modules\Hr\Models\StaffCharge;
 use App\Modules\FieldSales\Services\TargetService;
 use App\Modules\Inventory\Services\DocumentNumber;
@@ -129,6 +130,15 @@ class PayrollService
                 }
             }
 
+            // The overtime on these payslips is now paid: tie it to this run so it is not paid twice.
+            if (\Illuminate\Support\Facades\Schema::hasTable('overtime_entries')) {
+                [$y, $m] = array_map('intval', explode('-', $run->period));
+                $paidIds = Payslip::where('payroll_run_id', $run->id)->whereHas('lines', fn ($q) => $q->where('source', 'overtime'))->pluck('employee_id');
+                OvertimeEntry::withoutGlobalScopes()->whereIn('employee_id', $paidIds)->where('status', 'approved')
+                    ->where('worked_on', '<=', Carbon::create($y, $m, 1)->endOfMonth()->toDateString())
+                    ->update(['status' => 'paid', 'payroll_run_id' => $run->id]);
+            }
+
             $run->update(['status' => 'approved', 'approved_by' => $actor->id, 'approved_at' => now()]);
 
             return $run;
@@ -175,6 +185,11 @@ class PayrollService
                     $charge = StaffCharge::withoutGlobalScopes()->lockForUpdate()->find($line->source_id);
                     $charge?->update(['recovered' => max(0, $charge->recovered - $line->amount), 'status' => 'approved']);
                 }
+            }
+
+            // Overtime paid by this run goes back to approved, ready for the next run.
+            if (\Illuminate\Support\Facades\Schema::hasTable('overtime_entries')) {
+                OvertimeEntry::withoutGlobalScopes()->where('payroll_run_id', $run->id)->update(['status' => 'approved', 'payroll_run_id' => null]);
             }
 
             $run->update(['status' => 'void', 'void_reason' => $reason]);
@@ -232,11 +247,26 @@ class PayrollService
         }
 
         // Sales rewards are not basic pay: each product's reward is its own earning line, for staff who have a van salesman login.
+        $run = PayrollRun::find($slip->payroll_run_id);
         if ($employee->user_id) {
-            $run = PayrollRun::find($slip->payroll_run_id);
 
             foreach ($this->targets->payrollLines($slip->store_id, $employee->user_id, $run->period) as $reward) {
                 $lines[] = ['earning', 'target', $reward['id'], $reward['label'], $reward['amount']];
+            }
+        }
+
+        // Approved overtime not yet paid, worked up to the end of this run's month (late approvals are caught up next run).
+        $run ??= PayrollRun::find($slip->payroll_run_id);
+        if (\Illuminate\Support\Facades\Schema::hasTable('overtime_entries')) {
+            [$y, $m] = array_map('intval', explode('-', $run->period));
+            $monthEnd = Carbon::create($y, $m, 1)->endOfMonth()->toDateString();
+
+            $overtime = OvertimeEntry::withoutGlobalScopes()->where('employee_id', $employee->id)->where('status', 'approved')
+                ->where('worked_on', '<=', $monthEnd)->orderBy('worked_on')->get();
+
+            if ($overtime->isNotEmpty()) {
+                $hours = rtrim(rtrim(number_format((float) $overtime->sum('hours'), 2, '.', ''), '0'), '.');
+                $lines[] = ['earning', 'overtime', null, "Overtime ({$hours} hrs)", (int) $overtime->sum('amount')];
             }
         }
 

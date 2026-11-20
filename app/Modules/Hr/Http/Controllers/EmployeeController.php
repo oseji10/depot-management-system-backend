@@ -87,6 +87,7 @@ class EmployeeController extends Controller
         $data = $request->validate([
             'user_id' => ['required', 'integer'],
             'basic_salary' => ['required', 'integer', 'min:0', 'max:100000000000'],
+            'overtime_rate' => ['nullable', 'integer', 'min:0', 'max:100000000'],
             'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')->where('store_id', $storeId)],
         ]);
 
@@ -169,6 +170,7 @@ class EmployeeController extends Controller
             'left_on' => ['nullable', 'date'],
             'status' => ['sometimes', Rule::in(['active', 'left', 'archived'])],
             'basic_salary' => ['required', 'integer', 'min:0', 'max:100000000000'],
+            'overtime_rate' => ['nullable', 'integer', 'min:0', 'max:100000000'],
             'bank_name' => ['nullable', 'string', 'max:255'],
             'account_number' => ['nullable', 'string', 'max:30'],
             'account_name' => ['nullable', 'string', 'max:255'],

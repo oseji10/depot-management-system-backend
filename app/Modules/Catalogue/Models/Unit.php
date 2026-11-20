@@ -14,5 +14,10 @@ class Unit extends Model
     /** Unique values released when the record is deleted, with their column lengths. */
     protected array $freedOnDelete = ['abbreviation' => 10];
 
-    protected $fillable = ['store_id', 'name', 'abbreviation'];
+    protected $fillable = ['store_id', 'name', 'abbreviation', 'usual_size'];
+
+    protected function casts(): array
+    {
+        return ['usual_size' => 'integer'];
+    }
 }

@@ -307,6 +307,13 @@ Route::prefix('v1')->group(function () {
         Route::post('payslips/{id}/lines', [PayrollController::class, 'addLine'])->middleware('can:payroll.manage');
         Route::delete('payslip-lines/{id}', [PayrollController::class, 'removeLine'])->middleware('can:payroll.manage');
 
+        Route::get('overtime', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'index'])->middleware('can:employees.view');
+        Route::post('overtime', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'store'])->middleware('can:employees.manage');
+        Route::post('overtime/approve', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'approve'])->middleware('can:payroll.approve');
+        Route::put('overtime/{id}', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'update'])->middleware('can:employees.manage');
+        Route::post('overtime/{id}/reject', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'reject'])->middleware('can:payroll.approve');
+        Route::delete('overtime/{id}', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'destroy'])->middleware('can:employees.manage');
+
         Route::get('staff-charges', [StaffChargeController::class, 'index'])->middleware('can:staff-charges.view');
         Route::post('staff-charges', [StaffChargeController::class, 'store'])->middleware('can:staff-charges.manage');
         Route::post('staff-charges/{id}/approve', [StaffChargeController::class, 'approve'])->middleware('can:staff-charges.approve');
@@ -446,5 +453,5 @@ Route::prefix('v1')->group(function () {
         Route::post('rebate-calculations/{id}/approve', [RebateCalculationController::class, 'approve'])->middleware('can:rebates.approve');
         Route::post('rebate-calculations/{id}/void', [RebateCalculationController::class, 'void'])->middleware('can:rebates.calculate');
         Route::post('rebate-calculations/{id}/settle', [RebateCalculationController::class, 'settle'])->middleware('can:rebates.settle');
-    }); 
+    });
 });
