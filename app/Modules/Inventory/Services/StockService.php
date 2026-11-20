@@ -53,6 +53,11 @@ class StockService
 
             $product = Product::withoutGlobalScopes()->where('store_id', $warehouse->store_id)->findOrFail($productId);
 
+            // A bundle is only a recipe: its stock is the stock of the products inside it.
+            if ($product->is_bundle) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['product_id' => "{$product->name} is a bundle and has no stock of its own. Receive, move or count the products inside it instead."]);
+            }
+
             $keys = ['warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'status' => $status];
 
             DB::table('stock_balances')->insertOrIgnore([

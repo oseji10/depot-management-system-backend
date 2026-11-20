@@ -17,7 +17,7 @@ class Product extends Model
     protected $fillable = [
         'store_id', 'sku', 'name', 'brand', 'size_label', 'packaging', 'is_returnable', 'tracks_expiry', 'expiry_alert_days',
         'category_id', 'rebate_category_id', 'base_unit_id', 'units_per_case', 'is_active', 'image_path',
-        'bottle_container_id', 'crate_container_id',
+        'bottle_container_id', 'crate_container_id', 'is_bundle',
     ];
 
     protected $hidden = ['image_path'];
@@ -38,7 +38,7 @@ class Product extends Model
 
     protected function casts(): array
     {
-        return ['is_returnable' => 'boolean', 'tracks_expiry' => 'boolean', 'is_active' => 'boolean'];
+        return ['is_returnable' => 'boolean', 'tracks_expiry' => 'boolean', 'is_active' => 'boolean', 'is_bundle' => 'boolean'];
     }
 
     public function category(): BelongsTo
@@ -59,5 +59,11 @@ class Product extends Model
     public function units(): HasMany
     {
         return $this->hasMany(ProductUnit::class);
+    }
+
+    /** The products inside a bundle. */
+    public function bundleItems(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ProductBundleItem::class, 'bundle_id');
     }
 }

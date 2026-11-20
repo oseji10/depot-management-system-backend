@@ -46,7 +46,11 @@ class PosCatalogue
             ->with(['units' => fn ($q) => $q->where('is_active', true)->orderBy('factor'), 'units.unit:id,name,abbreviation'])
             ->orderBy('name')->get();
 
-        $rows = $products->map(function (Product $p) use ($effective, $stock) {
+        // A bundle's stock is how many can be made from what is on the shelf here.
+        $bundleIds = $products->filter(fn (Product $p) => $p->is_bundle)->pluck('id');
+        $bundleStock = $bundleIds->isEmpty() ? [] : app(\App\Modules\Catalogue\Services\BundleStock::class)->available($bundleIds, $stock->all());
+
+        $rows = $products->map(function (Product $p) use ($effective, $stock, $bundleStock) {
             $units = $p->units->filter(fn ($u) => isset($effective[$u->id]))->map(function ($u) use ($effective) {
                 $price = $effective[$u->id];
 
@@ -62,7 +66,7 @@ class PosCatalogue
                 'id' => $p->id, 'name' => $p->name, 'sku' => $p->sku, 'brand' => $p->brand, 'size_label' => $p->size_label,
                 'packaging' => $p->packaging, 'category_id' => $p->category_id, 'is_returnable' => $p->is_returnable, 'image_url' => $p->image_url,
                 'bottle_container_id' => $p->bottle_container_id, 'crate_container_id' => $p->crate_container_id, 'crate_size' => $p->crateSize(),
-                'stock' => (int) ($stock[$p->id] ?? 0), 'units' => $units,
+                'stock' => $p->is_bundle ? ($bundleStock[$p->id] ?? 0) : (int) ($stock[$p->id] ?? 0), 'is_bundle' => (bool) $p->is_bundle, 'units' => $units,
             ];
         })->filter(fn ($p) => $p['units']->isNotEmpty())->values();
 

@@ -104,7 +104,7 @@ class SalesPosting
         $this->reverseEntry($sale->store_id, "sale:{$sale->id}", $actor, $reason);
 
         foreach ($sale->lines as $line) {
-            $this->costing->add($sale->store_id, $line->product_id, $line->quantity * $line->factor, $line->cost_total);
+            app(\App\Modules\Catalogue\Services\BundleStock::class)->add($sale->store_id, $line->product_id, $line->quantity * $line->factor, $line->cost_total);
         }
     }
 

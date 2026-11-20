@@ -9,6 +9,7 @@ use App\Support\Tenancy\AccessScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -112,6 +113,7 @@ class UserController extends Controller
 
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:120'],
+            'email' => ['sometimes', 'email', 'max:150', Rule::unique('users', 'email')->ignore($user->id)],
             'phone' => ['nullable', 'string', 'max:30'],
             'password' => ['nullable', Password::min(8)],
             'role_id' => ['sometimes', 'integer'],
@@ -129,6 +131,10 @@ class UserController extends Controller
 
         DB::transaction(function () use ($user, $data) {
             $fill = collect($data)->except(['role_id', 'branch_id', 'branch_ids', 'password'])->all();
+
+            if (isset($fill['email'])) {
+                $fill['email'] = mb_strtolower(trim($fill['email']));
+            }
 
             if (! empty($data['password'])) {
                 $fill['password'] = $data['password'];

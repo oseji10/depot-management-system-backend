@@ -37,6 +37,7 @@ use Illuminate\Validation\ValidationException;
 class SaleService
 {
     public function __construct(
+        private \App\Modules\Catalogue\Services\BundleStock $bundles,
         private StockService $stock,
         private InventoryCosting $costing,
         private SalesPosting $posting,
@@ -111,12 +112,12 @@ class SaleService
             foreach ($lines as $line) {
                 $base = $line['quantity'] * $line['factor'];
 
-                $this->stock->move($warehouse, $line['product_id'], StockStatus::SALEABLE, -$base, 'sale', [
+                $this->bundles->move($warehouse, $line['product_id'], StockStatus::SALEABLE, -$base, 'sale', [
                     'source' => $sale, 'reference' => $sale->number, 'user_id' => $actor->id,
                     'idempotency_key' => "sale:{$sale->id}:{$line['product_id']}:{$line['unit_id']}:{$line['index']}",
                 ]);
 
-                $cost = $this->costing->issue($storeId, $line['product_id'], $base);
+                $cost = $this->bundles->issue($storeId, $line['product_id'], $base);
                 $cogs += $cost;
 
                 $sale->lines()->create([
@@ -238,7 +239,7 @@ class SaleService
             $warehouse = Warehouse::withoutGlobalScopes()->findOrFail($sale->warehouse_id);
 
             foreach ($sale->lines as $line) {
-                $this->stock->move($warehouse, $line->product_id, StockStatus::SALEABLE, $line->quantity * $line->factor, 'sale_void', [
+                $this->bundles->move($warehouse, $line->product_id, StockStatus::SALEABLE, $line->quantity * $line->factor, 'sale_void', [
                     'source' => $sale, 'reference' => $sale->number, 'note' => "Void: {$reason}", 'user_id' => $actor->id,
                     'idempotency_key' => "sale:{$sale->id}:line:{$line->id}:void",
                 ]);

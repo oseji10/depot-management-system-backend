@@ -20,6 +20,14 @@ use Illuminate\Validation\ValidationException;
 
 class ProductController extends Controller
 {
+    /** Bundles' contents are loaded only once their table exists (code uploaded before migrating must not break the page). */
+    private static function with(): array
+    {
+        return \Illuminate\Support\Facades\Schema::hasTable('product_bundle_items')
+            ? [...self::WITH, 'bundleItems.product:id,name,sku,base_unit_id', 'bundleItems.product.units.unit:id,name', 'bundleItems.unit:id,name']
+            : self::WITH;
+    }
+
     private const WITH = [
         'category:id,name', 'rebateCategory:id,name', 'baseUnit:id,name,abbreviation', 'units.unit:id,name,abbreviation',
     ];
@@ -31,7 +39,7 @@ class ProductController extends Controller
     public function index(Request $request): JsonResponse
     {
         $rows = Product::query()
-            ->with(self::WITH)
+            ->with(self::with())
             ->when($request->query('category_id'), fn ($q, $v) => $q->where('category_id', $v))
             ->when($request->query('rebate_category_id'), fn ($q, $v) => $q->where('rebate_category_id', $v))
             ->when($request->query('packaging'), fn ($q, $v) => $q->where('packaging', $v))
@@ -45,14 +53,23 @@ class ProductController extends Controller
         // What is on the shelf now (saleable, in bottles/cans) across the warehouses this person can see.
         $stock = StockBalance::query()->where('status', 'saleable')->whereIn('product_id', $rows->pluck('id'))
             ->selectRaw('product_id, SUM(quantity) AS qty')->groupBy('product_id')->pluck('qty', 'product_id');
-        $rows->getCollection()->each(fn ($p) => $p->setAttribute('stock_units', (int) ($stock[$p->id] ?? 0)));
+        $bundleIds = $rows->getCollection()->filter(fn ($p) => $p->is_bundle)->pluck('id');
+        $made = [];
+        if ($bundleIds->isNotEmpty()) {
+            // A bundle's "in stock" is how many can be made from its products (counted across the warehouses in view).
+            $parts = DB::table('product_bundle_items')->whereIn('bundle_id', $bundleIds)->pluck('product_id')->unique();
+            $partStock = StockBalance::query()->where('status', 'saleable')->whereIn('product_id', $parts)
+                ->selectRaw('product_id, SUM(quantity) AS qty')->groupBy('product_id')->pluck('qty', 'product_id')->map(fn ($v) => (int) $v)->all();
+            $made = app(\App\Modules\Catalogue\Services\BundleStock::class)->available($bundleIds, $partStock);
+        }
+        $rows->getCollection()->each(fn ($p) => $p->setAttribute('stock_units', $p->is_bundle ? ($made[$p->id] ?? 0) : (int) ($stock[$p->id] ?? 0)));
 
         return response()->json($rows);
     }
 
     public function show(int $id): JsonResponse
     {
-        return response()->json(Product::with(self::WITH)->findOrFail($id));
+        return response()->json(Product::with(self::with())->findOrFail($id));
     }
 
     public function store(Request $request): JsonResponse
@@ -63,15 +80,19 @@ class ProductController extends Controller
 
         $product = DB::transaction(function () use ($data, $storeId) {
             $product = Product::create([
-                ...collect($data)->except(['units', 'barcode'])->all(),
+                ...collect($data)->except(['units', 'barcode', 'bundle_items'])->all(),
                 'store_id' => $storeId,
             ]);
-            $this->syncUnits($product, $data['barcode'] ?? null, $data['units'] ?? []);
+            $this->syncUnits($product, $data['barcode'] ?? null, ($data['is_bundle'] ?? false) ? [] : ($data['units'] ?? []));
+
+            if ($data['is_bundle'] ?? false) {
+                $this->syncBundle($product, $data['bundle_items'] ?? []);
+            }
 
             return $product;
         });
 
-        return response()->json($product->load(self::WITH), 201);
+        return response()->json($product->load(self::with()), 201);
     }
 
     /**
@@ -82,8 +103,17 @@ class ProductController extends Controller
     {
         $product = Product::findOrFail($id);
 
+        if (\Illuminate\Support\Facades\Schema::hasTable('product_bundle_items')) {
+            $in = DB::table('product_bundle_items as i')->join('products as b', 'b.id', '=', 'i.bundle_id')->where('i.product_id', $product->id)->value('b.name');
+            abort_if($in, 422, "This product is inside the bundle \"{$in}\". Take it out of the bundle first.");
+        }
+
         try {
             DB::transaction(function () use ($product) {
+                if (\Illuminate\Support\Facades\Schema::hasTable('product_bundle_items')) {
+                    DB::table('product_bundle_items')->where('bundle_id', $product->id)->delete();
+                }
+
                 foreach ($product->units()->get() as $unit) {
                     $unit->prices()->delete();
                 }
@@ -110,22 +140,26 @@ class ProductController extends Controller
         // The base unit is only a label on the smallest variation (stock is counted in it either way), so it can be corrected
         // at any time: everything already recorded in it is relabelled with it.
         $newBase = isset($data['base_unit_id']) ? (int) $data['base_unit_id'] : null;
-        unset($data['base_unit_id']);
+        unset($data['base_unit_id'], $data['is_bundle']); // a product cannot turn into a bundle or back once made
 
         DB::transaction(function () use ($product, $data, $newBase) {
             if ($newBase !== null && $newBase !== (int) $product->base_unit_id) {
                 $this->relabelBase($product, $newBase);
             }
 
-            $product->update(collect($data)->except(['units', 'barcode'])->all());
+            $product->update(collect($data)->except(['units', 'barcode', 'bundle_items'])->all());
+
+            if ($product->is_bundle && array_key_exists('bundle_items', $data)) {
+                $this->syncBundle($product, $data['bundle_items']);
+            }
 
             // Only touch units when the caller sent the list; an omitted key must never deactivate packs.
-            if (array_key_exists('units', $data)) {
+            if (array_key_exists('units', $data) && ! $product->is_bundle) {
                 $this->syncUnits($product, $data['barcode'] ?? null, $data['units']);
             }
         });
 
-        return response()->json($product->fresh(self::WITH));
+        return response()->json($product->fresh(self::with()));
     }
 
     /**
@@ -219,7 +253,7 @@ class ProductController extends Controller
 
     public function history(Request $request, int $id): JsonResponse
     {
-        $product = Product::with(self::WITH)->findOrFail($id);
+        $product = Product::with(self::with())->findOrFail($id);
         $data = $request->validate([
             'from' => ['nullable', 'date'], 'to' => ['nullable', 'date'], 'warehouse_id' => ['nullable', 'integer'], 'type' => ['nullable', 'string', 'max:24'],
         ]);
@@ -409,7 +443,7 @@ class ProductController extends Controller
             Storage::disk('local')->delete($old);
         }
 
-        return response()->json($product->fresh(self::WITH));
+        return response()->json($product->fresh(self::with()));
     }
 
     public function removeImage(int $id): JsonResponse
@@ -421,7 +455,7 @@ class ProductController extends Controller
             $product->update(['image_path' => null]);
         }
 
-        return response()->json($product->fresh(self::WITH));
+        return response()->json($product->fresh(self::with()));
     }
 
     public function image(int $id)
@@ -430,6 +464,42 @@ class ProductController extends Controller
         abort_unless($product->image_path && Storage::disk('local')->exists($product->image_path), 404);
 
         return Storage::disk('local')->response($product->image_path, null, ['Cache-Control' => 'private, max-age=86400']);
+    }
+
+    /**
+     * Replace what is inside a bundle. Each item is a product in one of its variations (default: its smallest), e.g.
+     * 2 crates of Coke 50cl. Bundles cannot hold other bundles, or themselves.
+     */
+    private function syncBundle(Product $bundle, array $items): void
+    {
+        if ($items === []) {
+            throw ValidationException::withMessages(['bundle_items' => 'Add at least one product to the bundle.']);
+        }
+
+        $rows = [];
+        foreach ($items as $i => $item) {
+            $part = Product::with('units')->find($item['product_id'])
+                ?? throw ValidationException::withMessages(["bundle_items.$i.product_id" => 'That product was not found.']);
+
+            if ($part->id === $bundle->id || $part->is_bundle) {
+                throw ValidationException::withMessages(["bundle_items.$i.product_id" => "{$part->name} cannot go inside a bundle."]);
+            }
+
+            $unitId = (int) ($item['unit_id'] ?? $part->base_unit_id);
+            $variation = $part->units->first(fn ($u) => (int) $u->unit_id === $unitId && $u->is_active)
+                ?? throw ValidationException::withMessages(["bundle_items.$i.unit_id" => "{$part->name} is not sold that way."]);
+
+            $key = "{$part->id}:{$unitId}";
+            $rows[$key] = [
+                'bundle_id' => $bundle->id, 'product_id' => $part->id, 'unit_id' => $unitId,
+                'quantity' => ($rows[$key]['quantity'] ?? 0) + (int) $item['quantity'],
+                'base_quantity' => ($rows[$key]['base_quantity'] ?? 0) + (int) $item['quantity'] * (int) $variation->factor,
+                'created_at' => now(), 'updated_at' => now(),
+            ];
+        }
+
+        DB::table('product_bundle_items')->where('bundle_id', $bundle->id)->delete();
+        DB::table('product_bundle_items')->insert(array_values($rows));
     }
 
     private function rules(int $storeId, ?Product $product = null): array
@@ -459,6 +529,11 @@ class ProductController extends Controller
             'units.*.unit_id' => ['required', 'integer', $unit],
             'units.*.factor' => ['required', 'integer', 'min:2', 'max:100000'],
             'units.*.barcode' => ['nullable', 'string', 'max:64'],
+            'is_bundle' => ['sometimes', 'boolean'],
+            'bundle_items' => ['sometimes', 'array', 'max:20'],
+            'bundle_items.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('store_id', $storeId)],
+            'bundle_items.*.unit_id' => ['nullable', 'integer', $unit],
+            'bundle_items.*.quantity' => ['required', 'integer', 'min:1', 'max:100000'],
         ];
     }
 }

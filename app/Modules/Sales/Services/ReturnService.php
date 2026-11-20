@@ -26,6 +26,7 @@ use Illuminate\Validation\ValidationException;
 class ReturnService
 {
     public function __construct(
+        private \App\Modules\Catalogue\Services\BundleStock $bundles,
         private StockService $stock,
         private InventoryCosting $costing,
         private SalesPosting $posting,
@@ -95,11 +96,11 @@ class ReturnService
                 ]);
 
                 $base = $qty * $line->factor;
-                $this->stock->move($warehouse, $line->product_id, $status, $base, 'sale_return', [
+                $this->bundles->move($warehouse, $line->product_id, $status, $base, 'sale_return', [
                     'source' => $return, 'reference' => $return->number, 'note' => "Return on {$sale->number}: {$data['reason']}", 'user_id' => $actor->id,
                     'idempotency_key' => "salereturn:{$return->id}:{$k}",
                 ]);
-                $this->costing->add($sale->store_id, $line->product_id, $base, $cost);
+                $this->bundles->add($sale->store_id, $line->product_id, $base, $cost);
             }
 
             $this->posting->saleReturn($return, $actor);
