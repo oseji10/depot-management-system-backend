@@ -310,6 +310,7 @@ Route::prefix('v1')->group(function () {
         Route::get('reports/daily/settings', [\App\Modules\Sales\Http\Controllers\DailyReportController::class, 'show'])->middleware('can:business.manage');
         Route::put('reports/daily/settings', [\App\Modules\Sales\Http\Controllers\DailyReportController::class, 'update'])->middleware('can:business.manage');
         Route::post('reports/daily/send', [\App\Modules\Sales\Http\Controllers\DailyReportController::class, 'send'])->middleware('can:business.manage');
+        Route::get('reports/daily/dry-run', [\App\Modules\Sales\Http\Controllers\DailyReportController::class, 'dryRun'])->middleware('can:business.manage');
         Route::get('reports/daily/pdf', [\App\Modules\Sales\Http\Controllers\DailyReportController::class, 'pdf'])->middleware('can:reports.view');
 
         Route::get('staff-grades', [\App\Modules\Hr\Http\Controllers\StaffGradeController::class, 'index'])->middleware('can:employees.view');

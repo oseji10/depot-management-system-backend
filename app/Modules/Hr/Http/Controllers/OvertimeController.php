@@ -107,8 +107,16 @@ class OvertimeController extends Controller
 
         // The grade says whether its rate is per hour or per day; a typed or personal rate follows what was sent.
         $basis = $data['basis'] ?? ($typed === null && ! $employee->overtime_rate && $employee->grade ? $employee->grade->overtime_basis : 'hour');
-        $qty = (float) ($data['hours'] ?? ($basis === 'day' ? 1 : 0));
-        abort_unless($qty > 0, 422, $basis === 'day' ? 'Enter how many days.' : 'Enter how many hours.');
+        // Per day: the date worked is the day paid (one entry per person per date). Per hour: the hours are needed.
+        if ($basis === 'day') {
+            $qty = 1.0;
+            abort_if(OvertimeEntry::where('employee_id', $employee->id)->where('kind', 'overtime')->whereDate('worked_on', $data['worked_on'])
+                ->where('status', '!=', 'rejected')->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId))->exists(),
+                422, "{$employee->name} already has overtime recorded for that date.");
+        } else {
+            $qty = (float) ($data['hours'] ?? 0);
+            abort_unless($qty > 0, 422, 'Enter how many hours.');
+        }
 
         return ['kind' => 'overtime', 'worked_on' => $data['worked_on'], 'hours' => $qty, 'basis' => $basis, 'rate' => (int) $rate, 'amount' => (int) round($qty * $rate)];
     }

@@ -67,6 +67,17 @@ class DailyReportController extends Controller
         return response()->json(['sent_to' => $sent]);
     }
 
+    /** Dry run: what would happen now and who would get it. Nothing is sent. */
+    public function dryRun(Request $request): JsonResponse
+    {
+        $storeId = $this->access->requireStoreId();
+        $data = $request->validate(['date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today']]);
+        $d = $this->sender->dryRun($storeId, $data['date'] ?? null);
+        unset($d['pdf_data']);
+
+        return response()->json($d);
+    }
+
     /** The PDF for one day (or the HTML version when the PDF library is not installed yet). */
     public function pdf(Request $request, DailySalesReport $report)
     {
