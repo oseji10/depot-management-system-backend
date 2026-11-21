@@ -45,6 +45,13 @@ class StoreProvisioner
             ]);
 
             $this->seedRoles($store);
+
+            // Two starting staff grades; the business sets their overtime rates on the Staff grades page.
+            if (\Illuminate\Support\Facades\Schema::hasTable('staff_grades')) {
+                foreach (['Senior staff', 'Junior staff'] as $grade) {
+                    \Illuminate\Support\Facades\DB::table('staff_grades')->insertOrIgnore(['store_id' => $store->id, 'name' => $grade, 'overtime_rate' => 0, 'overtime_basis' => 'day', 'sunday_divisor' => 30, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()]);
+                }
+            }
             app(CatalogueDefaults::class)->seed($store);
             app(ChartDefaults::class)->seed($store->id);
             app(ExpenseDefaults::class)->seed($store->id);

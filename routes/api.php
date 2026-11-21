@@ -307,6 +307,16 @@ Route::prefix('v1')->group(function () {
         Route::post('payslips/{id}/lines', [PayrollController::class, 'addLine'])->middleware('can:payroll.manage');
         Route::delete('payslip-lines/{id}', [PayrollController::class, 'removeLine'])->middleware('can:payroll.manage');
 
+        Route::get('reports/daily/settings', [\App\Modules\Sales\Http\Controllers\DailyReportController::class, 'show'])->middleware('can:business.manage');
+        Route::put('reports/daily/settings', [\App\Modules\Sales\Http\Controllers\DailyReportController::class, 'update'])->middleware('can:business.manage');
+        Route::post('reports/daily/send', [\App\Modules\Sales\Http\Controllers\DailyReportController::class, 'send'])->middleware('can:business.manage');
+        Route::get('reports/daily/pdf', [\App\Modules\Sales\Http\Controllers\DailyReportController::class, 'pdf'])->middleware('can:reports.view');
+
+        Route::get('staff-grades', [\App\Modules\Hr\Http\Controllers\StaffGradeController::class, 'index'])->middleware('can:employees.view');
+        Route::post('staff-grades', [\App\Modules\Hr\Http\Controllers\StaffGradeController::class, 'store'])->middleware('can:employees.manage');
+        Route::put('staff-grades/{id}', [\App\Modules\Hr\Http\Controllers\StaffGradeController::class, 'update'])->middleware('can:employees.manage');
+        Route::delete('staff-grades/{id}', [\App\Modules\Hr\Http\Controllers\StaffGradeController::class, 'destroy'])->middleware('can:employees.manage');
+
         Route::get('overtime', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'index'])->middleware('can:employees.view');
         Route::post('overtime', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'store'])->middleware('can:employees.manage');
         Route::post('overtime/approve', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'approve'])->middleware('can:payroll.approve');

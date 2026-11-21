@@ -46,4 +46,9 @@ class Employee extends Model
     {
         return $this->hasMany(StaffCharge::class);
     }
+
+    public function grade(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(StaffGrade::class, 'grade_id');
+    }
 }

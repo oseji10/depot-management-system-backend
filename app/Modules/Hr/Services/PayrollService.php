@@ -264,9 +264,17 @@ class PayrollService
             $overtime = OvertimeEntry::withoutGlobalScopes()->where('employee_id', $employee->id)->where('status', 'approved')
                 ->where('worked_on', '<=', $monthEnd)->orderBy('worked_on')->get();
 
-            if ($overtime->isNotEmpty()) {
-                $hours = rtrim(rtrim(number_format((float) $overtime->sum('hours'), 2, '.', ''), '0'), '.');
-                $lines[] = ['earning', 'overtime', null, "Overtime ({$hours} hrs)", (int) $overtime->sum('amount')];
+            $fmt = fn (float $n) => rtrim(rtrim(number_format($n, 2, '.', ''), '0'), '.');
+
+            // Regular overtime, per hour and per day, then Sunday work: one payslip line each.
+            foreach ($overtime->groupBy(fn ($o) => ($o->kind ?? 'overtime') === 'sunday' ? 'sunday' : 'overtime:'.($o->basis ?? 'hour')) as $group => $set) {
+                $n = (float) $set->sum('hours');
+                $label = match ($group) {
+                    'sunday' => 'Sunday work ('.$set->count().' day'.($set->count() === 1 ? '' : 's').')',
+                    'overtime:day' => 'Overtime ('.$fmt($n).' day'.($n == 1 ? '' : 's').')',
+                    default => 'Overtime ('.$fmt($n).' hrs)',
+                };
+                $lines[] = ['earning', 'overtime', null, $label, (int) $set->sum('amount')];
             }
         }
 

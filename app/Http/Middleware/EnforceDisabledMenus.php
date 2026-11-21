@@ -42,6 +42,8 @@ class EnforceDisabledMenus
         '/payroll' => ['payroll-runs', 'payslips', 'payslip-lines', 'pay-items'],
         '/staff-charges' => ['staff-charges'],
         '/overtime' => ['overtime'],
+        '/staff-grades' => ['staff-grades'],
+        '/daily-report' => ['reports/daily'],
         '/pos-terminals' => ['pos-terminals'],
         '/expenses' => ['expenses', 'expense-categories'],
         '/journals' => ['journals'],

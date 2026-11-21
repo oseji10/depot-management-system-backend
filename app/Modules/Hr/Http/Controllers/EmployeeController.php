@@ -22,7 +22,7 @@ class EmployeeController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $rows = Employee::query()->with(['branch:id,name', 'branches', 'user:id,name,email'])
+        $rows = Employee::query()->with(['branch:id,name', 'branches', 'user:id,name,email', ...(\Illuminate\Support\Facades\Schema::hasTable('staff_grades') ? ['grade'] : [])])
             ->when($request->query('status'), fn ($q, $v) => $q->where('status', $v), fn ($q) => $q->where('status', '!=', 'archived'))
             ->when($request->query('search'), fn ($q, $s) => $q->where(fn ($w) => $w->where('name', 'like', "%{$s}%")->orWhere('staff_no', 'like', "%{$s}%")))
             ->orderBy('name')->paginate(min((int) $request->query('per_page', 25), 200));
@@ -32,7 +32,7 @@ class EmployeeController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $employee = Employee::with(['branch:id,name', 'branches', 'user:id,name,email', 'payItems.item:id,name,kind,calc,value'])->findOrFail($id);
+        $employee = Employee::with(['branch:id,name', 'branches', 'user:id,name,email', 'payItems.item:id,name,kind,calc,value', ...(\Illuminate\Support\Facades\Schema::hasTable('staff_grades') ? ['grade'] : [])])->findOrFail($id);
 
         $charges = $employee->charges()->orderByDesc('id')->limit(50)->get(['id', 'number', 'reason', 'description', 'amount', 'recovered', 'installments', 'status']);
 
@@ -177,6 +177,7 @@ class EmployeeController extends Controller
             'status' => ['sometimes', Rule::in(['active', 'left', 'archived'])],
             'basic_salary' => ['required', 'integer', 'min:0', 'max:100000000000'],
             'overtime_rate' => ['nullable', 'integer', 'min:0', 'max:100000000'],
+            'grade_id' => ['nullable', 'integer', Rule::exists('staff_grades', 'id')->where('store_id', $storeId)],
             'bank_name' => ['nullable', 'string', 'max:255'],
             'account_number' => ['nullable', 'string', 'max:30'],
             'account_name' => ['nullable', 'string', 'max:255'],
