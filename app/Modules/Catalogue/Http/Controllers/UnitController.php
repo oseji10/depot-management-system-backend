@@ -51,7 +51,7 @@ class UnitController extends Controller
 
         $id = \App\Modules\Catalogue\Services\UnitNames::find($storeId, $data['name']);
         $unit = Unit::findOrFail($id);
-        $unit->update(array_filter(['abbreviation' => $data['abbreviation'] ?? null, 'usual_size' => $data['usual_size'] ?? null], fn ($v) => $v !== null));
+        $unit->update(array_filter(['abbreviation' => $data['abbreviation'] ?? null, 'usual_size' => $data['usual_size'] ?? null, 'value' => $data['value'] ?? null], fn ($v) => $v !== null));
 
         return response()->json($unit->fresh(), 201);
     }
@@ -63,7 +63,7 @@ class UnitController extends Controller
 
         abort_if(Unit::query()->whereKeyNot($unit->id)->whereRaw('LOWER(name) = ?', [mb_strtolower(trim($data['name']))])->exists(), 422, 'Another variation already has that name.');
 
-        $unit->update(['name' => trim($data['name']), 'usual_size' => $data['usual_size'] ?? null] + (empty($data['abbreviation']) ? [] : ['abbreviation' => $data['abbreviation']]));
+        $unit->update(['name' => trim($data['name']), 'usual_size' => $data['usual_size'] ?? null, 'value' => $data['value'] ?? null] + (empty($data['abbreviation']) ? [] : ['abbreviation' => $data['abbreviation']]));
 
         return response()->json($unit);
     }
@@ -80,11 +80,33 @@ class UnitController extends Controller
         return response()->json(null, 204);
     }
 
+    /** Several variations at once (the "Add variation" form): each row is a name, an optional value and an optional quantity. */
+    public function bulk(Request $request): JsonResponse
+    {
+        $storeId = $this->access->requireStoreId();
+        $data = $request->validate([
+            'items' => ['required', 'array', 'min:1', 'max:20'],
+            'items.*.name' => ['required', 'string', 'max:50'],
+            'items.*.value' => ['nullable', 'string', 'max:60'],
+            'items.*.usual_size' => ['nullable', 'integer', 'min:1', 'max:10000'],
+        ]);
+
+        $out = [];
+        foreach ($data['items'] as $item) {
+            $unit = Unit::findOrFail(\App\Modules\Catalogue\Services\UnitNames::find($storeId, $item['name']));
+            $unit->update(array_filter(['value' => $item['value'] ?? null, 'usual_size' => $item['usual_size'] ?? null], fn ($v) => $v !== null && $v !== ''));
+            $out[] = $unit->fresh();
+        }
+
+        return response()->json(['data' => $out], 201);
+    }
+
     private function rules(int $storeId, ?Unit $unit = null): array
     {
         return [
             'name' => ['required', 'string', 'max:50'],
             'usual_size' => ['nullable', 'integer', 'min:1', 'max:10000'],
+            'value' => ['nullable', 'string', 'max:60'],
             'abbreviation' => ['nullable', 'string', 'max:10',
                 Rule::unique('units', 'abbreviation')->where('store_id', $storeId)->ignore($unit?->id)],
         ];

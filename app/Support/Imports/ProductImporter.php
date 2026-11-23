@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\DB;
  */
 class ProductImporter
 {
-    public function __construct(private int $storeId, private User $actor, private int $categoryId, private ?int $baseUnitId, private ?Warehouse $warehouse)
+    public function __construct(private int $storeId, private User $actor, private ?int $categoryId, private ?int $baseUnitId, private ?Warehouse $warehouse)
     {
     }
 
@@ -37,6 +37,36 @@ class ProductImporter
         }
 
         return $this->unitCache[mb_strtolower($name)] ??= UnitNames::find($this->storeId, $name);
+    }
+
+    private array $categoryCache = [];
+
+    /** The file's Category column (created if new); otherwise the category picked on screen; otherwise "General". */
+    private function categoryFor(array $row): int
+    {
+        $name = Cell::text($row, 'Category', 100);
+
+        if ($name === null && $this->categoryId) {
+            return $this->categoryId;
+        }
+
+        $name ??= 'General';
+        $key = mb_strtolower($name);
+
+        return $this->categoryCache[$key] ??= (\App\Modules\Catalogue\Models\ProductCategory::query()->whereRaw('LOWER(name) = ?', [$key])->value('id')
+            ?? \App\Modules\Catalogue\Models\ProductCategory::create(['store_id' => $this->storeId, 'name' => $name, 'is_active' => true])->id);
+    }
+
+    /** "RGB", "PET", "Can", "Other" in the file's Packaging column. */
+    private static function packagingFrom(?string $v): ?string
+    {
+        return match (mb_strtolower(trim((string) $v))) {
+            'rgb', 'glass', 'returnable glass bottle', 'glass bottle' => 'rgb',
+            'pet', 'plastic', 'plastic bottle' => 'pet',
+            'can', 'cans', 'canned' => 'can',
+            'other' => 'other',
+            default => null,
+        };
     }
 
     public static function packaging(string $name): string
@@ -75,7 +105,7 @@ class ProductImporter
             try {
                 DB::transaction(function () use ($row, $name, $line, $list, &$opening, $report) {
                     $sku = mb_substr(Cell::text($row, 'Product ID', 40) ?? strtoupper(substr(preg_replace('/\W+/', '', $name), 0, 12)), 0, 40);
-                    $price = Cell::number($row, 'Price');
+                    $price = null; // The upload adds products only: prices go on the Price lists page, stock comes in by receipt or count.
                     $existing = Product::where('sku', $sku)->first() ?? Product::whereRaw('LOWER(name) = ?', [self::key($name)])->first();
 
                     if ($existing) {
@@ -95,12 +125,12 @@ class ProductImporter
                         return;
                     }
 
-                    $packaging = self::packaging($name);
+                    $packaging = self::packagingFrom(Cell::text($row, 'Packaging', 20)) ?? self::packaging($name);
                     $unitId = $this->unitFor($row, $packaging);
                     $product = Product::create([
                         'store_id' => $this->storeId, 'sku' => $sku, 'name' => $name, 'packaging' => $packaging, 'is_returnable' => $packaging === 'rgb',
                         'size_label' => preg_match('/(\d+(?:\.\d+)?)\s?(cl|ml|l)\b/i', $name, $m) ? mb_strtolower($m[1].$m[2]) : null,
-                        'category_id' => $this->categoryId, 'base_unit_id' => $unitId, 'is_active' => true,
+                        'category_id' => $this->categoryFor($row), 'base_unit_id' => $unitId, 'is_active' => true,
                     ]);
 
                     $unit = ProductUnit::create(['store_id' => $this->storeId, 'product_id' => $product->id, 'unit_id' => $unitId, 'factor' => 1, 'is_base' => true, 'is_active' => true]);
@@ -108,8 +138,6 @@ class ProductImporter
 
                     if ($price && $list) {
                         ProductPrice::create(['store_id' => $this->storeId, 'price_list_id' => $list->id, 'product_unit_id' => $unit->id, 'price' => $price]);
-                    } else {
-                        $report->add('without_price');
                     }
 
                     $qty = (int) round(Cell::number($row, 'Stock Qty') ?? 0);

@@ -16,8 +16,10 @@ class StaffGradeController extends Controller
     {
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        abort_unless($request->user()->can('employees.view') || $request->user()->can('overtime.view'), 403, 'You are not allowed to see staff grades.');
+
         return response()->json(['data' => StaffGrade::query()->withCount('employees')->orderBy('name')->get()]);
     }
 

@@ -44,7 +44,7 @@ class StaffChargeController extends Controller
         ]);
 
         $employee = Employee::findOrFail($data['employee_id']);
-        abort_unless($employee->status === 'active', 422, 'That employee has left.');
+        abort_unless($employee->status === 'active', 422, 'That is a former employee.');
 
         return response()->json($this->service->create($employee, $data, $request->user())->load(['employee:id,name,staff_no']), 201);
     }

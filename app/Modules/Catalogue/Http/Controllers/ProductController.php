@@ -80,10 +80,10 @@ class ProductController extends Controller
 
         $product = DB::transaction(function () use ($data, $storeId) {
             $product = Product::create([
-                ...collect($data)->except(['units', 'barcode', 'bundle_items'])->all(),
+                ...collect($data)->except(['units', 'barcode', 'bundle_items', 'base_quantity'])->all(),
                 'store_id' => $storeId,
             ]);
-            $this->syncUnits($product, $data['barcode'] ?? null, ($data['is_bundle'] ?? false) ? [] : ($data['units'] ?? []));
+            $this->syncUnits($product, $data['barcode'] ?? null, ($data['is_bundle'] ?? false) ? [] : ($data['units'] ?? []), $data['base_quantity'] ?? null);
 
             if ($data['is_bundle'] ?? false) {
                 $this->syncBundle($product, $data['bundle_items'] ?? []);
@@ -144,10 +144,19 @@ class ProductController extends Controller
 
         DB::transaction(function () use ($product, $data, $newBase) {
             if ($newBase !== null && $newBase !== (int) $product->base_unit_id) {
+                // Stock is counted in the smallest variation. Swapping it for one of a different size would change what
+                // every stock number means, so it is only allowed before the product has any stock or sales.
+                $oldBase = ProductUnit::where('product_id', $product->id)->where('is_base', true)->first();
+                $oldQty = (int) ($oldBase?->quantity ?: 1);
+                $newQty = (int) ($data['base_quantity'] ?? 1);
+                if ($newQty !== $oldQty && $this->hasHistory($product)) {
+                    $old = $oldBase?->unit?->name ?? 'its smallest variation';
+                    throw ValidationException::withMessages(['units' => "{$product->name} already has stock or sales counted in {$old}. Keep {$old} as one of its variations (you can still sell only the bigger ones)."]);
+                }
                 $this->relabelBase($product, $newBase);
             }
 
-            $product->update(collect($data)->except(['units', 'barcode', 'bundle_items'])->all());
+            $product->update(collect($data)->except(['units', 'barcode', 'bundle_items', 'base_quantity'])->all());
 
             if ($product->is_bundle && array_key_exists('bundle_items', $data)) {
                 $this->syncBundle($product, $data['bundle_items']);
@@ -155,7 +164,7 @@ class ProductController extends Controller
 
             // Only touch units when the caller sent the list; an omitted key must never deactivate packs.
             if (array_key_exists('units', $data) && ! $product->is_bundle) {
-                $this->syncUnits($product, $data['barcode'] ?? null, $data['units']);
+                $this->syncUnits($product, $data['barcode'] ?? null, $data['units'], $data['base_quantity'] ?? null);
             }
         });
 
@@ -364,15 +373,17 @@ class ProductController extends Controller
      * The base unit always exists with factor 1. Other units are upserted; anything left out is
      * deactivated rather than deleted, so old prices and (later) transactions keep their references.
      */
-    private function syncUnits(Product $product, ?string $baseBarcode, array $units): void
+    /** The quantities as typed on the form are kept (for display) when the column exists. */
+    private function syncUnits(Product $product, ?string $baseBarcode, array $units, ?int $baseQty = null): void
     {
+        $hasQty = \Illuminate\Support\Facades\Schema::hasColumn('product_units', 'quantity');
         $this->assertUnitsValid($product, $baseBarcode, $units);
 
         $keep = [$product->base_unit_id];
 
         ProductUnit::updateOrCreate(
             ['product_id' => $product->id, 'unit_id' => $product->base_unit_id],
-            ['store_id' => $product->store_id, 'factor' => 1, 'barcode' => $baseBarcode, 'is_base' => true, 'is_active' => true],
+            ['store_id' => $product->store_id, 'factor' => 1, 'barcode' => $baseBarcode, 'is_base' => true, 'is_active' => true, ...($hasQty ? ['quantity' => $baseQty] : [])],
         );
 
         foreach ($units as $u) {
@@ -380,7 +391,7 @@ class ProductController extends Controller
 
             ProductUnit::updateOrCreate(
                 ['product_id' => $product->id, 'unit_id' => $u['unit_id']],
-                ['store_id' => $product->store_id, 'factor' => $u['factor'], 'barcode' => $u['barcode'] ?? null, 'is_base' => false, 'is_active' => true],
+                ['store_id' => $product->store_id, 'factor' => $u['factor'], 'barcode' => $u['barcode'] ?? null, 'is_base' => false, 'is_active' => true, ...($hasQty ? ['quantity' => $u['quantity'] ?? null] : [])],
             );
         }
 
@@ -528,6 +539,8 @@ class ProductController extends Controller
             'units' => ['sometimes', 'array', 'max:6'],
             'units.*.unit_id' => ['required', 'integer', $unit],
             'units.*.factor' => ['required', 'integer', 'min:2', 'max:100000'],
+            'units.*.quantity' => ['nullable', 'integer', 'min:1', 'max:100000'],
+            'base_quantity' => ['nullable', 'integer', 'min:1', 'max:100000'],
             'units.*.barcode' => ['nullable', 'string', 'max:64'],
             'is_bundle' => ['sometimes', 'boolean'],
             'bundle_items' => ['sometimes', 'array', 'max:20'],

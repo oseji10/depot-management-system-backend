@@ -12,7 +12,7 @@ class ProductUnit extends Model
 {
     use Auditable, BelongsToStore;
 
-    protected $fillable = ['store_id', 'product_id', 'unit_id', 'factor', 'barcode', 'is_base', 'is_active'];
+    protected $fillable = ['store_id', 'product_id', 'unit_id', 'factor', 'quantity', 'barcode', 'is_base', 'is_active'];
 
     protected function casts(): array
     {

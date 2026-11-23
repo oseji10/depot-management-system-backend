@@ -148,6 +148,7 @@ Route::prefix('v1')->group(function () {
         Route::delete('rebate-categories/{id}', [RebateCategoryController::class, 'destroy'])->middleware('can:products.manage');
 
         Route::get('units', [UnitController::class, 'index'])->middleware('can:products.view');
+        Route::post('units/bulk', [UnitController::class, 'bulk'])->middleware('can:products.manage');
         Route::post('units', [UnitController::class, 'store'])->middleware('can:products.manage');
         Route::put('units/{id}', [UnitController::class, 'update'])->middleware('can:products.manage');
         Route::delete('units/{id}', [UnitController::class, 'destroy'])->middleware('can:products.manage');
@@ -313,17 +314,18 @@ Route::prefix('v1')->group(function () {
         Route::get('reports/daily/dry-run', [\App\Modules\Sales\Http\Controllers\DailyReportController::class, 'dryRun'])->middleware('can:business.manage');
         Route::get('reports/daily/pdf', [\App\Modules\Sales\Http\Controllers\DailyReportController::class, 'pdf'])->middleware('can:reports.view');
 
-        Route::get('staff-grades', [\App\Modules\Hr\Http\Controllers\StaffGradeController::class, 'index'])->middleware('can:employees.view');
+        Route::get('staff-grades', [\App\Modules\Hr\Http\Controllers\StaffGradeController::class, 'index']); // employees.view or overtime.view, checked in the controller
         Route::post('staff-grades', [\App\Modules\Hr\Http\Controllers\StaffGradeController::class, 'store'])->middleware('can:employees.manage');
         Route::put('staff-grades/{id}', [\App\Modules\Hr\Http\Controllers\StaffGradeController::class, 'update'])->middleware('can:employees.manage');
         Route::delete('staff-grades/{id}', [\App\Modules\Hr\Http\Controllers\StaffGradeController::class, 'destroy'])->middleware('can:employees.manage');
 
-        Route::get('overtime', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'index'])->middleware('can:employees.view');
-        Route::post('overtime', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'store'])->middleware('can:employees.manage');
-        Route::post('overtime/approve', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'approve'])->middleware('can:payroll.approve');
-        Route::put('overtime/{id}', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'update'])->middleware('can:employees.manage');
-        Route::post('overtime/{id}/reject', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'reject'])->middleware('can:payroll.approve');
-        Route::delete('overtime/{id}', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'destroy'])->middleware('can:employees.manage');
+        Route::get('overtime/people', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'people'])->middleware('can:overtime.view');
+        Route::get('overtime', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'index'])->middleware('can:overtime.view');
+        Route::post('overtime', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'store'])->middleware('can:overtime.manage');
+        Route::post('overtime/approve', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'approve'])->middleware('can:overtime.approve');
+        Route::put('overtime/{id}', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'update'])->middleware('can:overtime.manage');
+        Route::post('overtime/{id}/reject', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'reject'])->middleware('can:overtime.approve');
+        Route::delete('overtime/{id}', [\App\Modules\Hr\Http\Controllers\OvertimeController::class, 'destroy'])->middleware('can:overtime.manage');
 
         Route::get('staff-charges', [StaffChargeController::class, 'index'])->middleware('can:staff-charges.view');
         Route::post('staff-charges', [StaffChargeController::class, 'store'])->middleware('can:staff-charges.manage');

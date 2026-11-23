@@ -40,13 +40,13 @@ class ImportController extends Controller
         $storeId = $this->access->requireStoreId();
         $data = $request->validate([
             ...$this->rowRules(),
-            'category_id' => ['required', 'integer', Rule::exists('product_categories', 'id')->where('store_id', $storeId)],
+            'category_id' => ['nullable', 'integer', Rule::exists('product_categories', 'id')->where('store_id', $storeId)],
             'base_unit_id' => ['nullable', 'integer', Rule::exists('units', 'id')->where('store_id', $storeId)],
             'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('store_id', $storeId)],
         ]);
 
-        $warehouse = ! empty($data['warehouse_id']) ? Warehouse::findOrFail($data['warehouse_id']) : null;
-        $importer = new ProductImporter($storeId, $request->user(), $data['category_id'], $data['base_unit_id'] ?? null, $warehouse);
+        // Products only: no opening stock (stock comes in through a goods receipt or a stock count).
+        $importer = new ProductImporter($storeId, $request->user(), $data['category_id'] ?? null, $data['base_unit_id'] ?? null, null);
 
         return $this->tracked($request, 'products', fn () => $importer->run($data['rows']), count($data['rows']));
     }

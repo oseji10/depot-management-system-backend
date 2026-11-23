@@ -44,13 +44,20 @@ class OvertimeController extends Controller
         return response()->json([...$rows->toArray(), 'totals' => $totals]);
     }
 
+    /** Just what the overtime form needs about each person (no bank details), so overtime can be given to roles without access to Employees. */
+    public function people(): JsonResponse
+    {
+        return response()->json(['data' => Employee::query()->with('grade')->where('status', 'active')->orderBy('name')
+            ->get(['id', 'name', 'staff_no', 'status', 'basic_salary', 'overtime_rate', 'grade_id'])]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $storeId = $this->access->requireStoreId();
         $data = $this->validated($request);
 
         $employee = Employee::with('grade')->findOrFail($data['employee_id']);
-        abort_unless($employee->status === 'active', 422, 'That employee is not active.');
+        abort_unless($employee->status === 'active', 422, 'That is not a current employee.');
 
         $entry = OvertimeEntry::create([
             'store_id' => $storeId, 'branch_id' => $employee->branch_id, 'employee_id' => $employee->id,
