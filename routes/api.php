@@ -405,6 +405,7 @@ Route::prefix('v1')->group(function () {
         Route::post('containers/supplier', [ContainerController::class, 'supplier'])->middleware('can:containers.manage');
 
         // Expenses
+        Route::get('expense-categories/accounts', [ExpenseCategoryController::class, 'accounts'])->middleware('can:expenses.manage');
         Route::get('expense-categories', [ExpenseCategoryController::class, 'index'])->middleware('can:expenses.create');
         Route::post('expense-categories', [ExpenseCategoryController::class, 'store'])->middleware('can:expenses.manage');
         Route::put('expense-categories/{id}', [ExpenseCategoryController::class, 'update'])->middleware('can:expenses.manage');

@@ -22,8 +22,12 @@ class ExpenseDefaults
 
     public function seed(int $storeId): void
     {
+        // The categories post to the standard expense accounts, so make sure the chart is there first (adds only what is missing).
+        app(\App\Modules\Accounting\Services\ChartDefaults::class)->seed($storeId);
+        $fallback = DB::table('accounts')->where('store_id', $storeId)->where('type', 'expense')->where('is_active', true)->orderByDesc('code')->value('id');
+
         foreach (self::CATEGORIES as $name => $code) {
-            $accountId = DB::table('accounts')->where('store_id', $storeId)->where('code', $code)->value('id');
+            $accountId = DB::table('accounts')->where('store_id', $storeId)->where('code', $code)->where('type', 'expense')->value('id') ?? $fallback;
 
             if (! $accountId) {
                 continue;

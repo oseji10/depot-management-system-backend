@@ -15,9 +15,28 @@ class ExpenseCategoryController extends Controller
     {
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return response()->json(ExpenseCategory::with('account:id,code,name')->orderBy('name')->get());
+        // A business that has none yet gets the starting set, so the lists are never empty.
+        if (! ExpenseCategory::withTrashed()->exists() && ($storeId = $this->access->storeId())) {
+            app(\App\Modules\Expenses\Services\ExpenseDefaults::class)->seed($storeId);
+        }
+
+        // The Expense categories page pages through all of them (switched-off ones too); pickers get the active ones.
+        if ($request->has('page')) {
+            return response()->json(ExpenseCategory::with('account:id,code,name')->withCount('expenses')
+                ->when($request->query('search'), fn ($q, $v) => $q->where('name', 'like', "%{$v}%"))
+                ->orderBy('name')->paginate(50));
+        }
+
+        return response()->json(ExpenseCategory::with('account:id,code,name')->where('is_active', true)->orderBy('name')->get());
+    }
+
+    /** The expense accounts a category can post to (for the category form, without needing access to the full chart). */
+    public function accounts(): JsonResponse
+    {
+        return response()->json(['data' => \App\Modules\Accounting\Models\Account::query()->where('type', 'expense')->where('is_active', true)->orderBy('code')->get(['id', 'code', 'name'])
+            ->map(fn ($a) => ['id' => $a->id, 'name' => "{$a->code} · {$a->name}"])]);
     }
 
     public function store(Request $request): JsonResponse

@@ -27,4 +27,9 @@ class ExpenseCategory extends Model
     {
         return $this->belongsTo(Account::class);
     }
+
+    public function expenses(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Expense::class, 'category_id');
+    }
 }
