@@ -74,6 +74,7 @@ class CustomerImporter
 
         $customer = new Customer([
             'store_id' => $this->storeId, 'client_ref' => $ref, 'name' => mb_substr($name, 0, 150), 'type' => 'retail', 'phone' => $phone,
+            'first_name' => $extra['first_name'] ?? null, 'last_name' => $extra['last_name'] ?? null, 'business_name' => $extra['business_name'] ?? null,
             'email' => $extra['email'] ?? null, 'address' => $extra['address'] ?? null, 'credit_limit' => 0, 'is_active' => true,
         ]);
 
@@ -89,7 +90,7 @@ class CustomerImporter
 
     private function one(array $row, int $line, ImportReport $report): void
     {
-        $name = Cell::text($row, 'Name', 150) ?? trim((Cell::text($row, 'First Name') ?? '').' '.(Cell::text($row, 'Last Name') ?? '')) ?: null;
+        $name = Cell::text($row, 'Name', 150) ?? Cell::text($row, 'Business Name', 150) ?? trim((Cell::text($row, 'First Name') ?? '').' '.(Cell::text($row, 'Last Name') ?? '')) ?: null;
         $phone = Cell::text($row, 'Phone', 40);
 
         if ($name === null && $phone === null) {
@@ -107,6 +108,8 @@ class CustomerImporter
         $address = implode(', ', array_filter([Cell::text($row, 'Street'), Cell::text($row, 'City'), Cell::text($row, 'State')]));
 
         $id = $this->findOrCreate(Cell::text($row, 'Customer ID', 30), $name, $phone, [
+            'first_name' => Cell::text($row, 'First Name', 80), 'last_name' => Cell::text($row, 'Last Name', 80),
+            'business_name' => Cell::text($row, 'Business Name', 150) ?? Cell::text($row, 'Company', 150),
             'email' => filter_var(Cell::text($row, 'Email', 150), FILTER_VALIDATE_EMAIL) ?: null,
             'address' => $address !== '' ? mb_substr($address, 0, 255) : null,
             'created_at' => Cell::dateTime($row, 'Created'),

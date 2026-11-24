@@ -114,7 +114,9 @@ class SyncService
         }
 
         $d = Validator::make($d, [
-            'name' => ['required', 'string', 'max:150'], 'type' => ['nullable', Rule::in(Customer::TYPES)],
+            'name' => ['required_without_all:first_name,business_name', 'nullable', 'string', 'max:150'],
+            'first_name' => ['nullable', 'string', 'max:80'], 'last_name' => ['nullable', 'string', 'max:80'], 'business_name' => ['nullable', 'string', 'max:150'],
+            'type' => ['nullable', Rule::in(Customer::TYPES)],
             'phone' => ['required', 'string', 'max:30'], 'address' => ['required', 'string', 'max:255'],
         ])->validate();
 
@@ -128,7 +130,8 @@ class SyncService
         }
 
         $customer = Customer::create([
-            'store_id' => $rep->store_id, 'client_ref' => $ref, 'name' => $d['name'], 'type' => $d['type'] ?? 'retail',
+            'store_id' => $rep->store_id, 'client_ref' => $ref, 'name' => $d['name'] ?? null,
+            'first_name' => $d['first_name'] ?? null, 'last_name' => $d['last_name'] ?? null, 'business_name' => $d['business_name'] ?? null, 'type' => $d['type'] ?? 'retail',
             'phone' => $phone, 'address' => $d['address'] ?? null, 'credit_limit' => 0,
         ]);
 

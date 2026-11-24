@@ -26,6 +26,8 @@ class CustomerController extends Controller
             ->when($routeCustomers !== null, fn ($q) => $q->whereIn('id', $routeCustomers))
             ->when($request->query('search'), fn ($q, $s) => $q->where(
                 fn ($w) => $w->where('name', 'like', "%{$s}%")->orWhere('phone', 'like', "%{$s}%")
+                    ->orWhere('first_name', 'like', "%{$s}%")->orWhere('last_name', 'like', "%{$s}%")->orWhere('business_name', 'like', "%{$s}%")
+                    ->orWhereRaw("CONCAT_WS(' ', first_name, last_name) LIKE ?", ["%{$s}%"])
             ))
             ->when($request->query('type'), fn ($q, $v) => $q->where('type', $v))
             ->when($request->has('active'), fn ($q) => $q->where('is_active', $request->boolean('active')))
@@ -60,6 +62,7 @@ class CustomerController extends Controller
     {
         $storeId = $this->access->requireStoreId();
 
+        $this->splitLegacyName($request);
         $data = $request->validate($this->rules($storeId));
         $data['empties_mode'] ??= ($data['type'] ?? 'retail') === 'wholesale' ? 'balance' : 'deposit';
         $groupIds = $data['group_ids'] ?? [];
@@ -91,15 +94,27 @@ class CustomerController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $customer = Customer::findOrFail($id);
+        $this->splitLegacyName($request);
         $customer->update(collect($request->validate($this->rules($customer->store_id, $customer)))->except('group_ids')->all());
 
         return response()->json($customer);
     }
 
+    /** Older apps (and the offline van app) still send one `name`: split it into the new fields. */
+    private function splitLegacyName(Request $request): void
+    {
+        if ($request->filled('name') && ! $request->hasAny(['first_name', 'last_name', 'business_name'])) {
+            $request->merge(Customer::splitName((string) $request->input('name')));
+        }
+    }
+
     private function rules(int $storeId, ?Customer $customer = null): array
     {
         return [
-            'name' => ['required', 'string', 'max:150'],
+            // A person needs a first name; a business can go by its business name alone.
+            'first_name' => [...($customer ? ['sometimes'] : []), 'required_without:business_name', 'nullable', 'string', 'max:80'],
+            'last_name' => ['nullable', 'string', 'max:80'],
+            'business_name' => ['nullable', 'string', 'max:150'],
             'type' => ['sometimes', Rule::in(Customer::TYPES)],
             // Required for every customer. Editing an old customer who has none only forces it when the form sends the field.
             'phone' => [$customer ? 'sometimes' : 'required', 'string', 'max:30', Rule::unique('customers', 'phone')->where('store_id', $storeId)->ignore($customer?->id)],
