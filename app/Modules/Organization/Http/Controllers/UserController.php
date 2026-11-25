@@ -53,20 +53,22 @@ class UserController extends Controller
             'email' => ['required', 'email', 'max:150', 'unique:users,email'],
             'phone' => ['nullable', 'string', 'max:30'],
             'password' => ['required', Password::min(8)],
-            'role_id' => ['required', 'integer'],
+            // Several roles are allowed (their permissions add up). Owner already has every permission, so it stands alone.
+            'role_ids' => ['required_without:role_id', 'array', 'min:1', 'max:20'],
+            'role_ids.*' => ['integer'],
+            'role_id' => ['required_without:role_ids', 'nullable', 'integer'],
             'branch_id' => ['nullable', 'integer'],
             'branch_ids' => ['sometimes', 'array', 'max:50'],
             'branch_ids.*' => ['integer'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
-        $role = $this->roleInStore($data['role_id'], $storeId);
-        $this->assertCanAssign($role);
+        $roles = $this->rolesFrom($data, $storeId);
 
-        $user = DB::transaction(function () use ($data, $role, $storeId) {
+        $user = DB::transaction(function () use ($data, $roles, $storeId) {
             $branchIds = $this->resolveBranchIds($data);
             $user = User::create([
-                ...collect($data)->except(['role_id', 'branch_id', 'branch_ids'])->all(),
+                ...collect($data)->except(['role_id', 'role_ids', 'branch_id', 'branch_ids'])->all(),
                 'store_id' => $storeId,
                 'branch_id' => $branchIds[0] ?? null,
             ]);
@@ -75,12 +77,12 @@ class UserController extends Controller
             }
 
             app(PermissionRegistrar::class)->setPermissionsTeamId($storeId);
-            $user->assignRole($role);
+            $user->syncRoles($roles->all());
 
             return $user;
         });
 
-        app(\App\Modules\Organization\Services\NotificationEmailer::class)->accountCreated($user, $storeId, $role->name);
+        app(\App\Modules\Organization\Services\NotificationEmailer::class)->accountCreated($user, $storeId, $roles->pluck('name')->join(', ', ' and '));
 
         return response()->json($user, 201);
     }
@@ -116,7 +118,9 @@ class UserController extends Controller
             'email' => ['sometimes', 'email', 'max:150', Rule::unique('users', 'email')->ignore($user->id)],
             'phone' => ['nullable', 'string', 'max:30'],
             'password' => ['nullable', Password::min(8)],
-            'role_id' => ['sometimes', 'integer'],
+            'role_ids' => ['sometimes', 'array', 'min:1', 'max:20'],
+            'role_ids.*' => ['integer'],
+            'role_id' => ['sometimes', 'nullable', 'integer'],
             'branch_id' => ['nullable', 'integer'],
             'branch_ids' => ['sometimes', 'array', 'max:50'],
             'branch_ids.*' => ['integer'],
@@ -126,11 +130,11 @@ class UserController extends Controller
         $isSelf = $user->id === $request->user()->id;
         abort_if($isSelf && array_key_exists('is_active', $data) && ! $data['is_active'], 422, 'You cannot disable your own account.');
         if ($isSelf) {
-            unset($data['role_id']); // nobody can change their own role
+            unset($data['role_id'], $data['role_ids']); // nobody can change their own roles
         }
 
         DB::transaction(function () use ($user, $data) {
-            $fill = collect($data)->except(['role_id', 'branch_id', 'branch_ids', 'password'])->all();
+            $fill = collect($data)->except(['role_id', 'role_ids', 'branch_id', 'branch_ids', 'password'])->all();
 
             if (isset($fill['email'])) {
                 $fill['email'] = mb_strtolower(trim($fill['email']));
@@ -156,12 +160,18 @@ class UserController extends Controller
                 DB::table('user_stores')->where('user_id', $user->id)->where('store_id', $user->store_id)->update(['branch_id' => $branchIds[0] ?? null]);
             }
 
-            if (isset($data['role_id'])) {
-                $role = $this->roleInStore($data['role_id'], $user->store_id);
-                $this->assertCanAssign($role);
-
+            $roles = $this->rolesFrom($data, $user->store_id);
+            if ($roles !== null) {
                 app(PermissionRegistrar::class)->setPermissionsTeamId($user->store_id);
-                $user->syncRoles([$role]);
+                $user->syncRoles($roles->all());
+
+                // No longer a van salesman (every role is now a built-in office role: Accountant, Manager...): give the van back.
+                // Otherwise the system keeps treating them as a van salesman: van menu, only their own sales, no warehouse selling.
+                // The van and its stock stay; only the link to this person is removed. Custom roles (no system key) keep the van.
+                if ($roles->every(fn (Role $r) => $r->system_key !== null && $r->system_key !== 'van_salesman')) {
+                    \App\Modules\Organization\Models\Warehouse::withoutGlobalScopes()->where('type', 'van')
+                        ->where('assigned_user_id', $user->id)->update(['assigned_user_id' => null]);
+                }
             }
 
             // A disabled user must be signed out everywhere immediately.
@@ -213,6 +223,35 @@ class UserController extends Controller
         return $requested ? Branch::findOrFail($requested)->id : null;
     }
 
+    /**
+     * The roles chosen in the form (role_ids, or the older single role_id), checked: each must belong to this business and be
+     * one the person saving may hand out, and Owner cannot be mixed with others. Null when the request does not touch roles.
+     *
+     * @return \Illuminate\Support\Collection<int, Role>|null
+     */
+    private function rolesFrom(array $data, int $storeId): ?\Illuminate\Support\Collection
+    {
+        $ids = $data['role_ids'] ?? (isset($data['role_id']) ? [$data['role_id']] : null);
+        if ($ids === null) {
+            return null;
+        }
+
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        if ($ids === []) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['role_ids' => 'Choose at least one role.']);
+        }
+
+        $roles = collect($ids)->map(fn (int $id) => $this->roleInStore($id, $storeId));
+        $roles->each(fn (Role $r) => $this->assertCanAssign($r));
+
+        $isOwner = fn (Role $r) => ($r->system_key ?? ($r->name === 'Owner' ? 'owner' : null)) === 'owner';
+        if ($roles->count() > 1 && $roles->contains($isOwner)) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['role_ids' => 'An owner can already do everything, so the Owner role cannot be combined with other roles.']);
+        }
+
+        return $roles;
+    }
+
     private function roleInStore(int $roleId, int $storeId): Role
     {
         return Role::where('store_id', $storeId)->findOrFail($roleId);
@@ -252,11 +291,14 @@ class UserController extends Controller
             ->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
             ->where('model_has_roles.model_type', (new User)->getMorphClass())
             ->whereIn('model_has_roles.model_id', $users->pluck('id'))
+            ->orderBy('roles.name')
             ->get(['model_has_roles.model_id', 'roles.id', 'roles.name'])
-            ->keyBy('model_id');
+            ->groupBy('model_id');
 
-        $users->each(fn ($u) => $u->setAttribute(
-            'role', $rows->has($u->id) ? ['id' => $rows[$u->id]->id, 'name' => $rows[$u->id]->name] : null
-        ));
+        $users->each(function ($u) use ($rows) {
+            $roles = ($rows[$u->id] ?? collect())->map(fn ($r) => ['id' => $r->id, 'name' => $r->name])->values();
+            $u->setAttribute('roles_list', $roles);
+            $u->setAttribute('role', $roles->first()); // older screens read one role
+        });
     }
 }
