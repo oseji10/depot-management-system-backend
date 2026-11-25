@@ -165,10 +165,9 @@ class UserController extends Controller
                 app(PermissionRegistrar::class)->setPermissionsTeamId($user->store_id);
                 $user->syncRoles($roles->all());
 
-                // No longer a van salesman (every role is now a built-in office role: Accountant, Manager...): give the van back.
-                // Otherwise the system keeps treating them as a van salesman: van menu, only their own sales, no warehouse selling.
-                // The van and its stock stay; only the link to this person is removed. Custom roles (no system key) keep the van.
-                if ($roles->every(fn (Role $r) => $r->system_key !== null && $r->system_key !== 'van_salesman')) {
+                // No longer a van salesman (none of their roles is Van Salesman): give the van back, so the van and its stock
+                // can go to someone else. Only the link to this person is removed.
+                if (! $roles->contains(fn (Role $r) => $r->system_key === 'van_salesman')) {
                     \App\Modules\Organization\Models\Warehouse::withoutGlobalScopes()->where('type', 'van')
                         ->where('assigned_user_id', $user->id)->update(['assigned_user_id' => null]);
                 }
