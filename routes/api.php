@@ -62,12 +62,17 @@ Route::prefix('v1')->group(function () {
         Route::post('reset-password', [\App\Modules\Organization\Http\Controllers\PasswordResetController::class, 'reset'])->middleware('throttle:10,1');
     });
 
+    // A PDF sent on WhatsApp as a link (payslip, receipt). Public: opened from the chat without signing in.
+    Route::get('s/{token}', [\App\Modules\Organization\Http\Controllers\SharedDocumentController::class, 'show'])
+        ->where('token', '[A-Za-z0-9]{40}')->middleware('throttle:60,1')->name('shared-document');
+
     // Authenticated + tenant resolved
     Route::post('paystack/webhook', [\App\Modules\Organization\Http\Controllers\SubscriptionController::class, 'webhook']);
 
     Route::middleware(['auth:sanctum', 'tenant', 'subscription', 'menus', 'warehouse'])->group(function () {
         Route::post('auth/logout', [AuthController::class, 'logout']);
         Route::get('auth/me', [AuthController::class, 'me']);
+        Route::post('shared-documents', [\App\Modules\Organization\Http\Controllers\SharedDocumentController::class, 'store'])->middleware('throttle:60,1');
 
         Route::put('business', [BusinessController::class, 'update'])->middleware('can:business.manage');
         Route::get('business/logo', [BusinessController::class, 'logo']);
